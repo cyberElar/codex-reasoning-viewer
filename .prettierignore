@@ -1,0 +1,7 @@
+node_modules/
+.local/
+.agents/
+package-lock.json
+*.cmd
+*.vbs
+LICENSE

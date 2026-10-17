@@ -1,0 +1,68 @@
+import { readFile } from 'node:fs/promises';
+import { CdpConnection } from './cdp.mjs';
+import { armManagerCapture } from './capture.mjs';
+export async function attachViewer(target, sites) {
+  const connection = await CdpConnection.connect(target.webSocketDebuggerUrl);
+  let releaseCapture = null,
+    disposed = false;
+  const [panelSource, resizeSource, controlsSource, adapterSource] = await Promise.all(
+    ['panel.js', 'resize.js', 'controls.js', 'adapter.js'].map((name) =>
+      readFile(new URL(name, import.meta.url), 'utf8'),
+    ),
+  );
+  async function initialize() {
+    if (releaseCapture) {
+      await releaseCapture();
+      releaseCapture = null;
+    }
+    await connection.evaluate(panelSource);
+    await connection.evaluate(resizeSource);
+    await connection.evaluate(controlsSource);
+    await connection.evaluate(adapterSource);
+    releaseCapture = await armManagerCapture(connection, sites);
+  }
+  async function check() {
+    if (disposed) return null;
+    let status = await connection.evaluate('window.__codexReasoningNativeAdapter?.status()??null');
+    if (!status) {
+      await initialize();
+      status = await connection.evaluate('window.__codexReasoningNativeAdapter.status()');
+    }
+    if (status.managerCount > 0 && releaseCapture) {
+      await releaseCapture();
+      releaseCapture = null;
+    }
+    const panel = await connection.evaluate('window.__codexReasoningViewer?.status()??null');
+    return { ...status, panel, captureArmed: releaseCapture !== null };
+  }
+  async function dispose() {
+    if (disposed) return;
+    disposed = true;
+    if (releaseCapture) await releaseCapture().catch(() => {});
+    await connection
+      .evaluate(
+        'window.__codexReasoningNativeAdapter?.dispose();window.__codexReasoningViewer?.dispose()',
+      )
+      .catch(() => {});
+    connection.close();
+  }
+  try {
+    await initialize();
+    return { check, dispose };
+  } catch (error) {
+    await dispose();
+    throw error;
+  }
+}
+export function isComposerPage(target) {
+  if (target.type !== 'page') return false;
+  try {
+    const url = new URL(target.url);
+    if (url.origin !== 'null' && url.protocol !== 'app:') return false;
+    if (url.protocol !== 'app:' || url.host !== '-' || url.pathname !== '/index.html') return false;
+    const route = url.searchParams.get('initialRoute') ?? '';
+    return !/avatar-overlay|screen-overlay|browser-comment|quick-chat/.test(route);
+  } catch {
+    return false;
+  }
+}

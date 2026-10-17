@@ -1,0 +1,19 @@
+[
+  {
+    "packageVersion": "26.1013.40934",
+    "assets": [
+      {
+        "path": "/assets/app-initial-5851df3f6cb1.js",
+        "sha256": "c70d95da34ba7e5962a559dbf68d0102d10b4b47b877f5d9933629bb5a1f3a10"
+      },
+      {
+        "path": "/assets/app-shared-bbfeca5e5737.js",
+        "sha256": "a6579611db8acf9c9908e2a29e70a88687eaa1d8f8dbcdc258de58f286051e9d"
+      },
+      {
+        "path": "/assets/rpc-52343cd3ff03.js",
+        "sha256": "2a49d754c0fc02cf4c4a526d391a1de3056a2c8173ef36e7ef9d24b64d856a72"
+      }
+    ]
+  }
+]

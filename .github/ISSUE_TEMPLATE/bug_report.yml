@@ -1,0 +1,34 @@
+name: Bug report
+description: Report a reproducible problem with the Windows reasoning viewer.
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please use synthetic text and redact local paths and thread IDs.
+        Do not upload session databases, rollout logs, account files, real reasoning, or live CDP endpoints.
+  - type: input
+    id: desktop-version
+    attributes:
+      label: Codex versions
+      description: Windows MSIX version and internal application version, if known.
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Windows and Node.js versions, and which launcher you used.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: Steps, expected behavior, and actual behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Redacted diagnostics
+      description: Relevant status/error fields only. Review all text before submitting.

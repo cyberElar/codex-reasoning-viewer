@@ -1,0 +1,46 @@
+{
+  "name": "codex-reasoning-viewer",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "A local, in-memory reasoning panel for Codex Desktop on Windows.",
+  "license": "MIT",
+  "author": "cyberElar",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cyberElar/codex-reasoning-viewer.git"
+  },
+  "homepage": "https://github.com/cyberElar/codex-reasoning-viewer#readme",
+  "bugs": {
+    "url": "https://github.com/cyberElar/codex-reasoning-viewer/issues"
+  },
+  "keywords": [
+    "codex",
+    "windows",
+    "reasoning",
+    "electron",
+    "cdp"
+  ],
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "os": [
+    "win32"
+  ],
+  "scripts": {
+    "start": "node src/native/launch.mjs",
+    "shortcuts:install": "node scripts/integrate-startup.mjs",
+    "shortcuts:remove": "node scripts/integrate-startup.mjs --remove",
+    "viewer:update": "node scripts/update-native-viewer.mjs",
+    "test": "node --test --test-timeout=30000 test/*.test.mjs",
+    "check": "node scripts/check-syntax.mjs",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "validate:composer": "node scripts/validate-native-composer.mjs",
+    "validate:controls": "node scripts/validate-native-controls.mjs"
+  },
+  "devDependencies": {
+    "acorn": "^8.19.0",
+    "prettier": "3.9.10"
+  }
+}
