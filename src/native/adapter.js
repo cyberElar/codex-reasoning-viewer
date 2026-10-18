@@ -327,6 +327,47 @@
     getManagers() {
       return [...managers].filter((manager) => !manager.disposed);
     },
+    exportHistory() {
+      return [...sessions].map(([threadId, state]) => ({
+        threadId,
+        isComplete: state.complete,
+        turns: state.order.map((id) => {
+          const turn = state.turns.get(id);
+          return { ...snapshot(turn), runOverride: turn.runOverride };
+        }),
+      }));
+    },
+    importHistory(history) {
+      if (!Array.isArray(history)) throw new TypeError('Invalid in-memory viewer history');
+      for (const entry of history) {
+        if (typeof entry?.threadId !== 'string' || !Array.isArray(entry.turns)) continue;
+        const state = session(entry.threadId),
+          incoming = [];
+        state.complete = entry.isComplete !== false;
+        for (const value of entry.turns) {
+          if (typeof value?.turnId !== 'string' || !Array.isArray(value.items)) continue;
+          incoming.push(value.turnId);
+          const turn = turnRecord(entry.threadId, value.turnId, false),
+            items = [];
+          turn.startedAtMs = value.startedAtMs ?? null;
+          turn.isRunning = value.isRunning === true;
+          turn.runOverride = typeof value.runOverride === 'boolean' ? value.runOverride : null;
+          for (const itemValue of value.items) {
+            if (typeof itemValue?.itemId !== 'string') continue;
+            items.push(itemValue.itemId);
+            const item = itemRecord(turn, itemValue.itemId, false);
+            mergeParts(item.summary, parts(itemValue.summary));
+            mergeParts(item.content, parts(itemValue.content));
+          }
+          turn.order = mergeOrder(turn.order, items);
+          turn.version++;
+        }
+        state.order = mergeOrder(state.order, incoming);
+      }
+      lastValue = null;
+      schedule();
+      return { sessions: sessions.size };
+    },
     refresh() {
       safely(refresh);
       return api.status();

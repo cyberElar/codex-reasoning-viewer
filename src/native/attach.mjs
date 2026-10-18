@@ -3,18 +3,42 @@ import { resolve } from 'node:path';
 import { CdpConnection } from './cdp.mjs';
 import { armManagerCapture } from './capture.mjs';
 import { readSkillBindings } from './skill-bindings.mjs';
+import { createSettingsStore, startupSettings } from '../control/settings.mjs';
 export async function attachViewer(target, sites) {
   const connection = await CdpConnection.connect(target.webSocketDebuggerUrl);
   let releaseCapture = null,
     disposed = false,
-    lastBindings = null;
+    lastBindings = null,
+    lastSettings = null;
   const project = resolve(import.meta.dirname, '../..');
+  const settingsStore = createSettingsStore(project);
   async function refreshBindings() {
     const value = JSON.stringify(await readSkillBindings(project));
     if (value !== lastBindings) {
       await connection.evaluate(`window.__codexReasoningControls?.setSkillPaths?.(${value})`);
       lastBindings = value;
     }
+  }
+  async function refreshSettings() {
+    let settings;
+    try {
+      settings = await settingsStore.read();
+    } catch {
+      return;
+    }
+    const value = JSON.stringify(settings);
+    if (value === lastSettings) return;
+    const previous = lastSettings ? JSON.parse(lastSettings) : null;
+    const patch = previous
+      ? Object.fromEntries(
+          Object.entries(settings).filter(([name, value]) => value !== previous[name]),
+        )
+      : startupSettings(settings);
+    if (Object.keys(patch).length)
+      await connection.evaluate(
+        `window.__codexReasoningViewer?.configure?.(${JSON.stringify(patch)})`,
+      );
+    lastSettings = value;
   }
   const [panelSource, resizeSource, controlsSource, adapterSource] = await Promise.all(
     ['panel.js', 'resize.js', 'controls.js', 'adapter.js'].map((name) =>
@@ -31,6 +55,8 @@ export async function attachViewer(target, sites) {
     await connection.evaluate(controlsSource);
     lastBindings = null;
     await refreshBindings();
+    lastSettings = null;
+    await refreshSettings();
     await connection.evaluate(adapterSource);
     releaseCapture = await armManagerCapture(connection, sites);
   }
@@ -46,6 +72,7 @@ export async function attachViewer(target, sites) {
       releaseCapture = null;
     }
     await refreshBindings();
+    await refreshSettings();
     const panel = await connection.evaluate('window.__codexReasoningViewer?.status()??null');
     return { ...status, panel, captureArmed: releaseCapture !== null };
   }

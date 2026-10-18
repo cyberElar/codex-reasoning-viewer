@@ -90,10 +90,22 @@ immediately. If an earlier native keyboard listener inserts a `skillMention`
 chip first, that same exact-path check executes it during the same key press.
 Other paths, attachments, and mixed text remain native drafts.
 
-The separate MCP server provides only four fixed visibility tools. It opens a
-short connection to the already verified desktop endpoint, changes only the panel
-preference, and returns minimal state. Reasoning deltas never flow through it.
+The separate MCP server provides four fixed visibility tools and two settings
+tools. A strict settings schema permits only display mode, scrolling preference,
+collapsed state, height, and indicator color. Settings are written atomically
+under ignored project state, and explicit MCP environment values are read at
+startup. A short connection to the verified desktop endpoint applies them through
+the fixed panel configuration API. Reasoning deltas never flow through MCP.
 See [control plugin details](CONTROL-PLUGIN.md) for lifecycle and installation.
+
+The English header contains only a theme-accent indicator, `Thinking…`, and
+`‹ n/m turns ›` navigation. The automatic indicator uses a CSS variable reference
+so changing the Codex accent updates it without polling.
+
+Hot updates retain the adapter's full session cache inside the renderer before
+replacing its listener wrappers. Importing that cache preserves live-only items
+and turns that are no longer present in native snapshots. The handoff never
+returns reasoning bodies over CDP or writes them to disk.
 
 ## Visibility and data
 

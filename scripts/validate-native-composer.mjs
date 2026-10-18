@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 import { CdpConnection, listTargets } from '../src/native/cdp.mjs';
 
 const port = Number(process.argv[2]);
+const isolatedBrowser = process.argv.includes('--isolated-browser');
 if (!Number.isInteger(port) || port < 1 || port > 65535)
   throw new Error('Pass the verified desktop loopback port');
 const project = resolve(import.meta.dirname, '..');
@@ -13,7 +14,9 @@ const [panelSource, resizeSource, adapterSource] = await Promise.all([
   readFile(resolve(project, 'src/native/adapter.js'), 'utf8'),
 ]);
 const target = (await listTargets(port)).find(
-  (target) => target.type === 'page' && target.url === 'app://-/index.html',
+  (target) =>
+    target.type === 'page' &&
+    target.url === (isolatedBrowser ? 'about:blank' : 'app://-/index.html'),
 );
 if (!target) throw new Error('Codex main page is unavailable');
 const connection = await CdpConnection.connect(target.webSocketDebuggerUrl);
@@ -134,10 +137,7 @@ try {
   const combined = await snapshot();
   assert.equal(combined.text, 'RAW_INITIAL RAW_DELTA\n\nSECOND_THOUGHT_SUMMARY');
   assert.equal(combined.panel.reasoningItems, 2);
-  await run(`(()=>{
-    const select=document.querySelector('[aria-label="\\u601d\\u8003\\u5185\\u5bb9"]');
-    select.value='raw';select.dispatchEvent(new Event('change'));
-  })()`);
+  await run("window.__codexReasoningViewer.configure({mode:'raw'})");
   await pause();
   const combinedRaw = await snapshot();
   assert.equal(combinedRaw.text, 'RAW_INITIAL RAW_DELTA\n\nSECOND_RAW_THOUGHT');
@@ -192,7 +192,7 @@ try {
     ['turn-older', 'turn-first', 'turn-next', 'turn-third'],
   );
   assert.equal((await snapshot()).panel.turnId, 'turn-first');
-  await run(`document.querySelector('[data-reasoning-viewer-latest]').click()`);
+  await run('window.__codexReasoningViewer.goLatest()');
   await pause();
   const latestTurn = await snapshot();
   assert.equal(latestTurn.panel.followingLatestTurn, true);
@@ -207,10 +207,28 @@ try {
     step: 'older-turn-inserted-in-order-and-navigation-restores-latest',
     turns: metadata,
   });
+  const historyBeforeUpdate = await run('window.__codexReasoningViewer.historyMetadata()');
   await run(`(()=>{
-    const select=document.querySelector('[aria-label="\\u601d\\u8003\\u5185\\u5bb9"]');
-    select.value='auto';select.dispatchEvent(new Event('change'));
+    window.__fixtureRetainedHistory=window.__codexReasoningNativeAdapter.exportHistory();
+    window.__codexReasoningNativeAdapter.dispose();
   })()`);
+  await run(adapterSource);
+  await run(`(()=>{
+    window.__codexReasoningNativeAdapter.importHistory(window.__fixtureRetainedHistory);
+    window.__codexReasoningNativeAdapter.capture(window.__composerFixtureManager);
+    window.__codexReasoningNativeAdapter.refresh();
+    delete window.__fixtureRetainedHistory;
+  })()`);
+  await pause();
+  assert.deepEqual(
+    await run('window.__codexReasoningViewer.historyMetadata()'),
+    historyBeforeUpdate,
+  );
+  historyCases.push({
+    step: 'in-memory-handoff-retains-turns-and-live-only-reasoning-absent-from-native-snapshots',
+    turns: historyBeforeUpdate.length,
+  });
+  await run("window.__codexReasoningViewer.configure({mode:'auto'})");
 
   await run(
     `document.getElementById('first').style.display='none';document.getElementById('second').style.display=''`,
@@ -322,7 +340,10 @@ try {
 
   const report = {
     observedAt: new Date().toISOString(),
-    kind: 'owned iframe fixture in current desktop renderer; isolated preference storage; no native thread or model requests',
+    kind:
+      'owned iframe fixture in ' +
+      (isolatedBrowser ? 'an isolated browser' : 'the current desktop renderer') +
+      '; isolated preference storage; no native thread or model requests',
     passed: true,
     samples,
     historyCases,

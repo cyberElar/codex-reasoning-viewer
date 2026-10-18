@@ -6,6 +6,8 @@
     sessions = new Map();
   let current = null,
     mode = 'auto',
+    // followPreference is the configured setting; follow is the current scroll-follow state.
+    followPreference = true,
     follow = true,
     disposed = false,
     renderScheduled = false,
@@ -17,6 +19,7 @@
   } catch {}
   const panel = document.createElement('section');
   panel.dataset.reasoningViewer = 'codex-reasoning-viewer-v1';
+  panel.setAttribute('aria-label', 'Reasoning');
   // A constructed sheet gives hover/focus states without an inline <style>, which CSP may block.
   const scope = '[data-reasoning-viewer="codex-reasoning-viewer-v1"]',
     part = (name) => scope + ' [data-reasoning-viewer-part="' + name + '"]';
@@ -26,30 +29,33 @@
     sheet.replaceSync(
       [
         scope +
-          '{--rv-line:color-mix(in srgb,currentColor 11%,transparent);--rv-fill:color-mix(in srgb,currentColor 7%,transparent);--rv-muted:color-mix(in srgb,currentColor 58%,transparent);box-sizing:border-box;margin:0 0 6px;min-width:0;border:1px solid var(--rv-line);border-radius:12px;background-color:var(--color-background-primary,transparent);background-image:linear-gradient(color-mix(in srgb,currentColor 2.5%,transparent),color-mix(in srgb,currentColor 2.5%,transparent));font-size:12px;line-height:1.5;overflow:hidden}',
+          // The native accent stays a live reference, so theme changes apply without polling.
+          '{--rv-indicator-color:var(--codex-base-accent,var(--color-ring-primary,currentColor));--rv-line:color-mix(in srgb,currentColor 11%,transparent);--rv-fill:color-mix(in srgb,currentColor 7%,transparent);--rv-muted:color-mix(in srgb,currentColor 58%,transparent);box-sizing:border-box;margin:0 0 6px;min-width:0;border:1px solid var(--rv-line);border-radius:12px;background-color:var(--color-background-primary,transparent);background-image:linear-gradient(color-mix(in srgb,currentColor 2.5%,transparent),color-mix(in srgb,currentColor 2.5%,transparent));font-size:12px;line-height:1.5;overflow:hidden}',
         scope + '[hidden],' + scope + ' [hidden]{display:none!important}',
         part('header') +
-          '{display:flex;align-items:center;gap:2px;min-height:28px;padding:1px 4px 1px 10px}',
+          '{display:flex;align-items:center;min-height:28px;padding:1px 4px 1px 10px}',
         part('dot') +
-          '{flex:none;width:6px;height:6px;margin-right:6px;border-radius:50%;background:currentColor;opacity:.3}',
+          '{flex:none;width:6px;height:6px;margin-right:7px;border-radius:50%;background:var(--rv-indicator-color);opacity:.45}',
         part('dot') +
-          '[data-running]{opacity:.85;animation:codex-reasoning-viewer-pulse 1.4s ease-in-out infinite}',
-        '@keyframes codex-reasoning-viewer-pulse{50%{opacity:.2}}',
+          '[data-running]{opacity:1;animation:codex-reasoning-viewer-pulse 1.4s ease-in-out infinite}',
+        '@keyframes codex-reasoning-viewer-pulse{50%{opacity:.35}}',
         part('title') + '{flex:none;font-weight:500;white-space:nowrap}',
-        part('source') +
-          '{flex:1 1 auto;min-width:0;margin-left:8px;color:var(--rv-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+        part('turns') +
+          '{display:flex;align-items:center;flex:none;margin-left:auto;font-variant-numeric:tabular-nums}',
         scope +
           ' button,' +
           scope +
           ' select' +
-          '{box-sizing:border-box;flex:none;height:22px;margin:0;padding:0 7px;border:0;border-radius:6px;font:inherit;color:inherit;background:transparent;opacity:.62;cursor:pointer;transition:background-color .12s,opacity .12s}',
-        scope + ' select{min-width:0;padding:0 2px 0 6px}',
+          '{box-sizing:border-box;flex:none;height:22px;margin:0;border:0;border-radius:6px;font:inherit;color:inherit;background:transparent;opacity:.62;cursor:pointer;transition:background-color .12s,opacity .12s}',
+        scope + ' button{width:22px;padding:0;font-size:15px;line-height:1}',
+        // The native listbox keeps keyboard and pointer behavior; only its arrow is removed.
+        scope +
+          ' select{-webkit-appearance:none;appearance:none;min-width:0;padding:0 4px;text-align:center;text-align-last:center}',
+        scope + ' option{background-color:Canvas;color:CanvasText}',
         scope +
           ' button:hover:not(:disabled),' +
           scope +
-          ' select:hover,' +
-          scope +
-          ' button[aria-pressed="true"]{opacity:1;background:var(--rv-fill)}',
+          ' select:hover{opacity:1;background:var(--rv-fill)}',
         scope + ' button:disabled{opacity:.25;cursor:default}',
         scope +
           ' button:focus-visible,' +
@@ -57,14 +63,6 @@
           ' select:focus-visible,' +
           scope +
           ' pre:focus-visible{opacity:1;outline:2px solid color-mix(in srgb,currentColor 28%,transparent);outline-offset:-2px}',
-        part('navigation') + '{display:flex;align-items:center;gap:2px;padding:0 4px 4px}',
-        scope +
-          ' [data-reasoning-viewer-previous-turn],' +
-          scope +
-          ' [data-reasoning-viewer-next-turn]{width:22px;padding:0;font-size:15px;line-height:1}',
-        scope + ' [data-reasoning-viewer-turn]{max-width:240px;font-variant-numeric:tabular-nums}',
-        scope +
-          ' [data-reasoning-viewer-latest]{margin-left:auto;opacity:.85;background:var(--rv-fill)}',
         scope +
           ' pre{box-sizing:border-box;margin:0;padding:8px 12px 10px;border-top:1px solid var(--rv-line);max-height:200px;overflow:auto;overscroll-behavior:contain;font:inherit;color:color-mix(in srgb,currentColor 82%,transparent);white-space:pre-wrap;overflow-wrap:anywhere;user-select:text;scrollbar-width:thin;scrollbar-color:color-mix(in srgb,currentColor 22%,transparent) transparent}',
         // resize.js styles its grip inline; keep it quiet until the handle is used.
@@ -90,21 +88,7 @@
   dot.setAttribute('aria-hidden', 'true');
   const title = document.createElement('strong');
   title.dataset.reasoningViewerPart = 'title';
-  title.textContent = '\u601d\u8003';
-  const source = document.createElement('span');
-  source.dataset.reasoningViewerPart = 'source';
-  const select = document.createElement('select');
-  select.setAttribute('aria-label', '\u601d\u8003\u5185\u5bb9');
-  for (const [value, label] of [
-    ['auto', '\u81ea\u52a8'],
-    ['summary', '\u6458\u8981'],
-    ['raw', '\u539f\u6587'],
-  ]) {
-    const option = document.createElement('option');
-    option.value = value;
-    option.textContent = label;
-    select.append(option);
-  }
+  title.textContent = 'Thinking\u2026';
   function button(text, label) {
     const node = document.createElement('button');
     node.type = 'button';
@@ -115,28 +99,35 @@
     }
     return node;
   }
-  const followButton = button('\u8ddf\u968f'),
-    toggle = button('\u6536\u8d77'),
-    hideButton = button('\u9690\u85cf');
-  toggle.setAttribute('aria-expanded', 'true');
-  hideButton.title = '/cot off';
-  bar.append(dot, title, source, select, followButton, toggle, hideButton);
-  const navigation = document.createElement('div');
-  navigation.dataset.reasoningViewerPart = 'navigation';
-  const previous = button('\u2039', '\u4e0a\u4e00\u56de\u5408'),
-    next = button('\u203a', '\u4e0b\u4e00\u56de\u5408');
+  const turns = document.createElement('div');
+  turns.dataset.reasoningViewerPart = 'turns';
+  turns.setAttribute('role', 'group');
+  turns.setAttribute('aria-label', 'Reasoning turns');
+  const previous = button('\u2039', 'Previous turn'),
+    next = button('\u203a', 'Next turn');
   previous.dataset.reasoningViewerPreviousTurn = '';
   next.dataset.reasoningViewerNextTurn = '';
   const turnSelect = document.createElement('select');
   turnSelect.dataset.reasoningViewerTurn = '';
-  turnSelect.setAttribute('aria-label', '\u9009\u62e9\u601d\u8003\u56de\u5408');
-  const latest = button('\u56de\u5230\u6700\u65b0');
-  latest.dataset.reasoningViewerLatest = '';
-  navigation.append(previous, turnSelect, next, latest);
+  turnSelect.title = 'Select reasoning turn';
+  turnSelect.setAttribute('aria-label', 'Select reasoning turn');
+  turns.append(previous, turnSelect, next);
+  bar.append(dot, title, turns);
   const body = document.createElement('pre');
   body.tabIndex = 0;
-  body.setAttribute('aria-label', '\u5b8c\u6574\u601d\u8003\u5185\u5bb9');
-  panel.append(bar, navigation, body);
+  body.setAttribute('aria-label', 'Full reasoning');
+  panel.append(bar, body);
+  const modes = ['auto', 'summary', 'raw'];
+  const hexColor = /^#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i;
+  let indicatorColor = 'auto';
+  const validSetting = {
+    mode: (value) => modes.includes(value),
+    follow: (value) => typeof value === 'boolean',
+    collapsed: (value) => typeof value === 'boolean',
+    height: (value) => value === null || (Number.isInteger(value) && value >= 64 && value <= 1600),
+    indicatorColor: (value) =>
+      value === 'auto' || (typeof value === 'string' && hexColor.test(value)),
+  };
   function session(id = current) {
     if (!sessions.has(id))
       sessions.set(id, { turns: [], selected: null, followingLatest: true, complete: true });
@@ -155,25 +146,15 @@
     return turn?.items ?? [];
   }
   function chosen(turn) {
-    const texts = [],
-      sources = new Set();
+    const texts = [];
     for (const item of turnItems(turn)) {
       const summary = parts(item.summary).join('\n\n'),
         raw = parts(item.content).join('\n\n');
       const useSummary = mode === 'summary' || (mode === 'auto' && summary.trim());
       const text = useSummary ? summary : raw;
-      if (text.trim()) {
-        texts.push(text);
-        sources.add(useSummary ? 'summary' : 'raw');
-      }
+      if (text.trim()) texts.push(text);
     }
-    const label =
-      sources.size > 1
-        ? '\u6458\u8981 / \u539f\u6587'
-        : sources.has('summary') || mode === 'summary'
-          ? '\u6458\u8981'
-          : '\u539f\u6587';
-    return { text: texts.join('\n\n'), label };
+    return texts.join('\n\n');
   }
   function syncNavigation(state, turn) {
     const count = state.turns.length,
@@ -182,14 +163,7 @@
     for (let i = 0; i < count; i++) {
       const item = state.turns[i],
         option = turnSelect.options[i] ?? document.createElement('option');
-      const count = item.items?.length ?? 0;
-      const text =
-        '\u7b2c ' +
-        (i + 1) +
-        ' / ' +
-        state.turns.length +
-        ' \u56de\u5408' +
-        (count ? ' \u00b7 ' + count + ' \u6bb5' : '');
+      const text = i + 1 + '/' + count + ' turns';
       if (option.value !== item.turnId) option.value = item.turnId;
       if (option.textContent !== text) option.textContent = text;
       if (!option.parentElement) turnSelect.append(option);
@@ -197,11 +171,7 @@
     turnSelect.value = turn?.turnId ?? '';
     previous.disabled = index <= 0;
     next.disabled = index < 0 || index >= count - 1;
-    latest.hidden = state.followingLatest;
-    latest.textContent =
-      '\u56de\u5230\u6700\u65b0' +
-      (index >= 0 && index < count - 1 ? ' (' + (count - index - 1) + ')' : '');
-    navigation.hidden = !count;
+    turns.hidden = !count;
   }
   function render() {
     renderScheduled = false;
@@ -211,16 +181,15 @@
     const state = current ? session() : { turns: [], followingLatest: true },
       turn = activeTurn();
     panel.hidden = !current || !state.turns.length;
-    const value = chosen(turn);
     const empty =
       mode === 'summary'
-        ? '\u672c\u56de\u5408\u672a\u6536\u5230\u6458\u8981'
+        ? 'No reasoning summary for this turn'
         : mode === 'raw'
-          ? '\u672c\u56de\u5408\u672a\u6536\u5230\u63a8\u7406\u539f\u6587'
+          ? 'No raw reasoning for this turn'
           : turn?.isRunning
-            ? '\u7b49\u5f85\u53ef\u663e\u793a\u7684\u601d\u8003\u6587\u672c'
-            : '\u672c\u56de\u5408\u672a\u6536\u5230\u53ef\u663e\u793a\u7684\u601d\u8003\u6587\u672c';
-    const text = value.text || empty,
+            ? 'Waiting for reasoning text\u2026'
+            : 'No reasoning text for this turn';
+    const text = chosen(turn) || empty,
       oldText = body.textContent,
       scrollTop = body.scrollTop;
     if (text !== oldText) {
@@ -228,9 +197,7 @@
         body.firstChild.appendData(text.slice(oldText.length));
       else body.textContent = text;
     }
-    source.textContent = value.label + (turn?.isRunning ? ' \u00b7 \u8fdb\u884c\u4e2d' : '');
     dot.toggleAttribute('data-running', turn?.isRunning === true);
-    followButton.setAttribute('aria-pressed', String(follow));
     syncNavigation(state, turn);
     if (resetScroll) {
       body.scrollTop = 0;
@@ -303,7 +270,7 @@
     if (index < 0) return;
     state.selected = id;
     state.followingLatest = index === state.turns.length - 1;
-    follow = state.followingLatest;
+    follow = followPreference && state.followingLatest;
     resetScroll = !follow;
     schedule();
   }
@@ -320,6 +287,45 @@
       state.selected = state.turns[0]?.turnId ?? null;
     }
     if (current === snapshot.threadId) schedule();
+  }
+  function settings() {
+    return {
+      mode,
+      follow: followPreference,
+      collapsed: body.hidden,
+      height: api.resize?.status().preferredHeightPx ?? null,
+      indicatorColor,
+    };
+  }
+  function configure(patch) {
+    if (!patch || typeof patch !== 'object' || Array.isArray(patch))
+      throw new TypeError('Settings patch must be an object');
+    // Read each value once and validate the whole patch before anything changes.
+    const values = Object.fromEntries(Object.entries(patch)),
+      has = (name) => Object.hasOwn(values, name);
+    for (const [name, value] of Object.entries(values)) {
+      if (!Object.hasOwn(validSetting, name)) throw new TypeError('Unknown setting: ' + name);
+      if (!validSetting[name](value)) throw new TypeError('Invalid value for setting: ' + name);
+    }
+    if (has('height') && typeof api.resize?.setHeight !== 'function')
+      throw new Error('height unavailable');
+    const collapsed = has('collapsed') ? values.collapsed : body.hidden;
+    if (has('mode')) mode = values.mode;
+    if (has('follow')) follow = followPreference = values.follow;
+    if (has('indicatorColor')) {
+      indicatorColor = values.indicatorColor;
+      // Removing the inline override falls back to the live accent reference in the sheet.
+      if (indicatorColor === 'auto') panel.style.removeProperty('--rv-indicator-color');
+      else panel.style.setProperty('--rv-indicator-color', indicatorColor);
+    }
+    if (has('height')) {
+      if (values.height === null) api.resize.resetHeight();
+      else api.resize.setHeight(values.height);
+    }
+    // setHeight expands the body; an omitted collapsed setting keeps its previous value.
+    body.hidden = collapsed;
+    schedule();
+    return settings();
   }
   function setSnapshot(snapshot) {
     const id = snapshot.threadId ?? null;
@@ -356,24 +362,6 @@
     attributes: true,
     attributeFilter: ['class', 'style', 'hidden', 'data-above-composer-conversation-id'],
   });
-  select.addEventListener(
-    'change',
-    () => {
-      mode = select.value;
-      follow = true;
-      schedule();
-    },
-    { signal },
-  );
-  followButton.addEventListener(
-    'click',
-    () => {
-      follow = true;
-      schedule();
-    },
-    { signal },
-  );
-  hideButton.addEventListener('click', () => setEnabled(false), { signal });
   window.addEventListener(
     'storage',
     (event) => {
@@ -381,26 +369,9 @@
     },
     { signal },
   );
-  toggle.addEventListener(
-    'click',
-    () => {
-      body.hidden = !body.hidden;
-      toggle.textContent = body.hidden ? '\u5c55\u5f00' : '\u6536\u8d77';
-      toggle.setAttribute('aria-expanded', String(!body.hidden));
-    },
-    { signal },
-  );
   previous.addEventListener('click', () => step(-1), { signal });
   next.addEventListener('click', () => step(1), { signal });
   turnSelect.addEventListener('change', () => navigate(turnSelect.value), { signal });
-  latest.addEventListener(
-    'click',
-    () => {
-      const turn = session().turns.at(-1);
-      if (turn) navigate(turn.turnId);
-    },
-    { signal },
-  );
   body.addEventListener(
     'wheel',
     (event) => {
@@ -411,7 +382,8 @@
   body.addEventListener(
     'scroll',
     () => {
-      follow = body.scrollHeight - body.clientHeight - body.scrollTop < 12;
+      // Manual scrolling pauses or resumes only the runtime state, never the preference.
+      follow = followPreference && body.scrollHeight - body.clientHeight - body.scrollTop < 12;
     },
     { passive: true, signal },
   );
@@ -424,6 +396,8 @@
     setHistory,
     setSnapshot,
     setEnabled,
+    configure,
+    settings,
     toggle() {
       return setEnabled(!enabled);
     },
@@ -435,7 +409,7 @@
     setThread(id) {
       if (current !== id) {
         current = id;
-        follow = true;
+        follow = followPreference;
         resetScroll = false;
         schedule();
       }
@@ -494,6 +468,7 @@
         renderPending: renderScheduled,
         mode,
         follow,
+        collapsed: body.hidden,
         isRunning: turn?.isRunning === true,
         threadId: current,
         turnId: turn?.turnId ?? null,

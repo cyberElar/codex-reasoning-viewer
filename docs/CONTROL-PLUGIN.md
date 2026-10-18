@@ -60,14 +60,17 @@ invocation into a zero-model UI action.
 
 ## MCP tools
 
-| Tool            | Operation                                     |
-| --------------- | --------------------------------------------- |
-| `viewer_status` | Read minimal connection/visibility state      |
-| `viewer_show`   | Show the existing panel                       |
-| `viewer_hide`   | Fully hide it while history capture continues |
-| `viewer_toggle` | Switch visibility                             |
+| Tool               | Operation                                     |
+| ------------------ | --------------------------------------------- |
+| `viewer_status`    | Read minimal connection/visibility state      |
+| `viewer_show`      | Show the existing panel                       |
+| `viewer_hide`      | Fully hide it while history capture continues |
+| `viewer_toggle`    | Switch visibility                             |
+| `viewer_settings`  | Read saved display settings                   |
+| `viewer_configure` | Save and apply a validated settings patch     |
 
-All four tools accept an empty argument object. There are no reasoning resources,
+All tools except `viewer_configure` accept an empty argument object.
+There are no reasoning resources,
 prompt templates, arbitrary code arguments, or remote host parameters.
 
 Before connecting, the controller checks saved PID/port values, the installed
@@ -78,6 +81,65 @@ IDs or reasoning bodies.
 
 The stdio server's lifetime belongs to its MCP client/session. Stopping that
 server does not stop the independent native helper.
+
+## Settings and startup configuration
+
+The toolbar contains only an indicator, `Thinking…`, and `‹ n/m turns ›`.
+Settings are managed by MCP, not by controls in that toolbar.
+
+| Field            | Values                                                         | Default |
+| ---------------- | -------------------------------------------------------------- | ------- |
+| `mode`           | `auto`, `summary`, `raw`                                       | `auto`  |
+| `follow`         | Boolean; default scrolling preference                          | `true`  |
+| `collapsed`      | Boolean; keep the header and hide the text body                | `false` |
+| `height`         | Integer from 64 to 1600 pixels, or `null` for automatic sizing | `null`  |
+| `indicatorColor` | `auto` or a 3/4/6/8-digit hex color                            | `auto`  |
+
+For example:
+
+```json
+{
+  "mode": "raw",
+  "follow": true,
+  "collapsed": false,
+  "indicatorColor": "auto"
+}
+```
+
+Pass that object to `viewer_configure`. It saves only the supplied fields and
+applies them to attached windows. If the desktop is closed, the settings are still
+saved and will be applied when the helper attaches. `viewer_settings` reads them
+without needing a running desktop.
+
+With `indicatorColor: "auto"`, the dot references Codex's native accent variable;
+theme changes take effect immediately. A hex color overrides it. No color is
+hard-coded for the automatic case.
+
+Preferences are stored in ignored `.local/control-plugin/settings.json`.
+Manual scrolling can pause the current text without changing the configured
+follow preference. Dragging the grip keeps its existing local height preference.
+An explicit `{"height": null}` resets that height; an unspecified startup height
+preserves a previous mouse resize.
+
+To set startup values, add viewer variables to the `reasoning-control` server's
+`env` in the generated
+`.local/control-plugin/plugins/codex-reasoning-viewer/mcp.json`:
+
+```json
+{
+  "CODEX_REASONING_MODE": "auto",
+  "CODEX_REASONING_FOLLOW": "true",
+  "CODEX_REASONING_COLLAPSED": "false",
+  "CODEX_REASONING_HEIGHT": "auto",
+  "CODEX_REASONING_INDICATOR_COLOR": "auto"
+}
+```
+
+Rerun `npm.cmd run plugin:install` to refresh the installed package, then let the
+MCP server start in a new session. The installer preserves these viewer variables
+when rebuilding the package. Explicit environment values are reapplied on MCP
+startup; fields omitted from `env` keep their saved settings. The generated
+`env` is empty by default so tool changes persist across sessions.
 
 ## Startup boundary
 

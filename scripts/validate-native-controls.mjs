@@ -201,6 +201,32 @@ try {
     return snapshot();
   };
   await settle();
+  const minimalHeader = await run(`(()=>{
+    const header=window.__codexReasoningViewer.getElement().querySelector('[data-reasoning-viewer-part="header"]');
+    return{
+      title:header.querySelector('[data-reasoning-viewer-part="title"]').textContent,
+      buttons:header.querySelectorAll('button').length,
+      selectors:header.querySelectorAll('select').length,
+      previous:!!header.querySelector('[data-reasoning-viewer-previous-turn]'),
+      next:!!header.querySelector('[data-reasoning-viewer-next-turn]'),
+      turn:header.querySelector('[data-reasoning-viewer-turn]').selectedOptions[0]?.textContent,
+      source:!!header.querySelector('[data-reasoning-viewer-part="source"]'),
+      navigation:!!document.querySelector('[data-reasoning-viewer-part="navigation"]'),
+    };
+  })()`);
+  assert.deepEqual(minimalHeader, {
+    title: 'Thinking\u2026',
+    buttons: 2,
+    selectors: 1,
+    previous: true,
+    next: true,
+    turn: '1/1 turns',
+    source: false,
+    navigation: false,
+  });
+  cases.push(
+    'the English header contains only the indicator, Thinking label and arrow turn navigation',
+  );
   await draft('/cot off');
   assert.equal((await snapshot()).hint, true);
   const hidden = await enter();
@@ -495,9 +521,7 @@ try {
   );
 
   await draft('');
-  await run(
-    'window.__codexReasoningViewer.getElement().querySelector(\'button[title="/cot off"]\').click()',
-  );
+  await run('window.__codexReasoningViewer.setEnabled(false)');
   await settle();
   const headerHidden = await snapshot();
   assert.equal(headerHidden.visibleOwnedNodes, 0);
@@ -513,7 +537,65 @@ try {
   await settle();
   assert.equal((await snapshot()).status.enabled, false);
   assert.equal((await snapshot()).visibleOwnedNodes, 0);
-  cases.push('header and cross-window visibility fully remove UI; the local command reopens it');
+  cases.push('API and cross-window visibility fully remove UI; the local command reopens it');
+
+  await run(`(()=>{
+    const api=window.__codexReasoningViewer;
+    api.setEnabled(true);api.setTurn('turn-one');
+    api.configure({mode:'raw',follow:false,height:180,collapsed:false,indicatorColor:'#123456'});
+  })()`);
+  await settle();
+  const configured = await run(`(()=>{
+    const api=window.__codexReasoningViewer,panel=api.getElement();
+    return{settings:api.settings(),text:panel.querySelector('pre').textContent,
+      dot:getComputedStyle(panel.querySelector('[data-reasoning-viewer-part="dot"]')).backgroundColor};
+  })()`);
+  assert.deepEqual(configured.settings, {
+    mode: 'raw',
+    follow: false,
+    collapsed: false,
+    height: 180,
+    indicatorColor: '#123456',
+  });
+  assert.equal(configured.text, 'INITIAL_RAW\n\nSECOND_RAW');
+  assert.equal(configured.dot, 'rgb(18, 52, 86)');
+  const invalidConfiguration = await run(`(()=>{
+    const api=window.__codexReasoningViewer,before=JSON.stringify(api.settings());
+    let rejected=false;
+    try{api.configure({mode:'summary',indicatorColor:'url(https://invalid.example/image)'});}catch{rejected=true;}
+    return{rejected,unchanged:JSON.stringify(api.settings())===before};
+  })()`);
+  assert.deepEqual(invalidConfiguration, { rejected: true, unchanged: true });
+  await run("window.__codexReasoningViewer.configure({mode:'summary',collapsed:true})");
+  await settle();
+  const collapsedSettings = await run(`({
+    text:window.__codexReasoningViewer.getElement().querySelector('pre').textContent,
+    collapsed:window.__codexReasoningViewer.getElement().querySelector('pre').hidden,
+    settings:window.__codexReasoningViewer.settings(),
+  })`);
+  assert.equal(collapsedSettings.text, 'INITIAL_SUMMARY');
+  assert.equal(collapsedSettings.collapsed, true);
+  assert.equal(collapsedSettings.settings.collapsed, true);
+  await run(`(()=>{
+    document.documentElement.style.setProperty('--codex-base-accent','#a67df2');
+    window.__codexReasoningViewer.configure({indicatorColor:'auto'});
+  })()`);
+  const automaticColor = await run(
+    'getComputedStyle(window.__codexReasoningViewer.getElement().querySelector(\'[data-reasoning-viewer-part="dot"]\')).backgroundColor',
+  );
+  assert.equal(automaticColor, 'rgb(166, 125, 242)');
+  await run("document.documentElement.style.setProperty('--codex-base-accent','#00aa77')");
+  const changedColor = await run(
+    'getComputedStyle(window.__codexReasoningViewer.getElement().querySelector(\'[data-reasoning-viewer-part="dot"]\')).backgroundColor',
+  );
+  assert.equal(changedColor, 'rgb(0, 170, 119)');
+  await run(
+    "window.__codexReasoningViewer.configure({mode:'auto',follow:true,collapsed:false,height:null,indicatorColor:'auto'});window.__codexReasoningViewer.setEnabled(false)",
+  );
+  await settle();
+  cases.push(
+    'settings change source, following, collapse and height without toolbar UI; indicator color follows theme changes, supports overrides and rejects invalid patches atomically',
+  );
 
   const cleanup = await run(`(()=>{
     window.__codexReasoningViewer.dispose();

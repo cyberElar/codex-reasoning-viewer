@@ -34,9 +34,8 @@
   handle.tabIndex = 0;
   handle.setAttribute('role', 'separator');
   handle.setAttribute('aria-orientation', 'horizontal');
-  handle.setAttribute('aria-label', '\u8c03\u6574\u601d\u8003\u680f\u9ad8\u5ea6');
-  handle.title =
-    '\u4e0a\u4e0b\u62d6\u52a8\u8c03\u6574\u9ad8\u5ea6\uff0c\u53cc\u51fb\u6062\u590d\u9ed8\u8ba4';
+  handle.setAttribute('aria-label', 'Resize reasoning panel');
+  handle.title = 'Drag to resize; double-click to reset';
   handle.style.cssText =
     'display:flex;align-items:center;justify-content:center;height:8px;cursor:ns-resize;touch-action:none;user-select:none;outline-offset:-2px;';
   const grip = document.createElement('span');
@@ -78,7 +77,7 @@
     updateHandle();
   }
   function expand() {
-    if (body.hidden) panel.querySelector('button[aria-expanded="false"]')?.click();
+    if (body.hidden) api.configure({ collapsed: false });
   }
   function setHeight(value, { save = true } = {}) {
     if (!Number.isFinite(value)) throw new TypeError('Height must be a finite number');

@@ -23,3 +23,4 @@ jobs:
       - run: npm.cmd run format:check
       - run: npm.cmd test
       - run: npm.cmd run validate:controls:isolated
+      - run: npm.cmd run validate:composer:isolated

@@ -20,7 +20,11 @@ It does not modify the ASAR, replace the application directory, or alter model s
 - **Turn history:** keep multiple reasoning items together within a turn, browse
   earlier turns, and return to the latest without losing already observed items.
 - **Resizable panel:** drag the top grip; double-click to reset its height.
-- **Local controls:** `/cot`, `/cot on`, and `/cot off`, plus a hide button.
+- **Minimal English header:** an accent-colored indicator, `Thinking…`, and
+  `‹ n/m turns ›` navigation. The indicator follows the Codex accent by default.
+- **MCP settings:** choose the display source, scroll following, collapsed state,
+  height, and indicator color through tools or startup environment configuration.
+- **Local controls:** `/cot`, `/cot on`, and `/cot off`.
   Hiding removes the entire panel without a placeholder or reopen button, while
   the helper and history capture keep running. Use `/cot on` to reopen.
 - **Background launcher:** optional desktop and Start Menu shortcuts start Codex
@@ -28,7 +32,7 @@ It does not modify the ASAR, replace the application directory, or alter model s
 - **Build guard:** unknown or changed desktop builds start normally with the
   viewer disabled.
 
-The interface currently uses Chinese labels. It displays only text that Codex
+The interface uses English labels. It displays only text that Codex
 actually receives. Encrypted reasoning without a readable summary remains
 unavailable; the viewer does not decrypt it or request additional model output.
 
@@ -94,11 +98,9 @@ composer; the companion follows the active visible conversation.
 | `/cot`                            | Toggle panel visibility                          |
 | `/cot on`                         | Show the panel                                   |
 | `/cot off`                        | Hide the panel; keep capturing history           |
-| Auto / Summary / Raw selector     | Choose which readable text to display            |
-| Previous / next / turn selector   | Browse the current session by turn               |
-| 回到最新                          | Return to the latest turn                        |
-| 跟随                              | Resume automatic scrolling                       |
-| Hide button                       | Completely hide the panel; reopen with `/cot on` |
+| `‹ n/m turns ›`                   | Browse turns with arrows or the turn selector    |
+| Last turn in the selector         | Return to the latest turn                        |
+| `viewer_configure` MCP tool       | Change source, following, collapse, height/color |
 | Drag top grip / double-click grip | Resize / reset the panel                         |
 
 Enter a local command alone on one line, with the caret at its end, then press
@@ -124,9 +126,16 @@ npm.cmd run plugin:install
 ```
 
 This installs a local plugin through the official Codex CLI. It provides the
-`cot`, `cot-on`, and `cot-off` skills in the native slash menu, plus four MCP tools:
-`viewer_show`, `viewer_hide`, `viewer_toggle`, and `viewer_status`.
-The MCP tools return only minimal control state, never reasoning text.
+`cot`, `cot-on`, and `cot-off` skills in the native slash menu, plus six MCP tools:
+`viewer_show`, `viewer_hide`, `viewer_toggle`, `viewer_status`, `viewer_settings`,
+and `viewer_configure`. They return only control state and settings, never
+reasoning text.
+
+For example, `viewer_configure` with `{"mode":"raw","indicatorColor":"auto"}`
+selects raw text and follows Codex's accent color. All fields are optional;
+unmentioned fields keep their saved values. See the
+[configuration guide](docs/CONTROL-PLUGIN.md#settings-and-startup-configuration)
+for MCP `env` startup settings.
 
 In the supported desktop, the attached local handler identifies this plugin's
 exact skill paths. Highlight `cot`, `cot-on`, or `cot-off`, then press Tab or

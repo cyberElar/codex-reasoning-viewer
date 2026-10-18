@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.3.0 - 2026-10-18
+
+- Simplify the English header to an accent indicator, Thinking label, and
+  previous/next arrows around the current turn counter.
+- Follow the Codex accent color by default and allow a custom indicator color.
+- Add MCP settings tools for display mode, following, collapse, height, and color.
+- Read explicit MCP environment settings at startup and save tool changes locally.
+- Preserve the complete in-memory history during viewer hot updates, including
+  reasoning items that are no longer available in native snapshots.
+- Extend isolated browser regressions to configuration, dynamic theme colors,
+  history handoff, and the minimal header.
+
 ## 0.2.1 - 2026-10-18
 
 - Apply a highlighted viewer control immediately on Tab, Enter, or click.

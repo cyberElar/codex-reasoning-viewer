@@ -60,7 +60,17 @@ try {
   if (!port) throw new Error('The isolated browser did not open its debugging endpoint');
   const result = await promisify(execFile)(
     process.execPath,
-    [join(project, 'scripts/validate-native-controls.mjs'), String(port), '--isolated-browser'],
+    [
+      join(
+        project,
+        'scripts',
+        process.argv.includes('--composer')
+          ? 'validate-native-composer.mjs'
+          : 'validate-native-controls.mjs',
+      ),
+      String(port),
+      '--isolated-browser',
+    ],
     { cwd: project, windowsHide: true, timeout: 60000, maxBuffer: 1024 * 1024 },
   );
   process.stdout.write(result.stdout);

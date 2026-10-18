@@ -29,14 +29,17 @@ No Windows sign-in task, registry launch hook, official shortcut rewrite, or
 installed file patch is used.
 
 The optional `npm.cmd run plugin:install` layer adds native skill-menu entries
-and MCP visibility tools. It does not replace the launcher or create an app-start
+and MCP visibility/settings tools. It does not replace the launcher or create an app-start
 hook. See [the control plugin guide](CONTROL-PLUGIN.md).
 
 ## Panel behavior
 
 - Auto chooses each item's nonempty summary, otherwise its raw content.
-- Summary and Raw are explicit choices; a missing source has a visible empty
-  state and the source switch stays available.
+- Summary and Raw are explicit choices through `viewer_configure`; a missing
+  source has an English empty state.
+- The header contains only an accent indicator, Thinking label, and
+  `‹ n/m turns ›`. The arrows and selector browse history.
+- The indicator follows the Codex accent unless overridden through MCP settings.
 - Multiple reasoning items within a turn are joined in order.
 - Turn navigation retains your selected historical turn while new text arrives.
 - Following scrolls to the end; scrolling up pauses it.
@@ -112,6 +115,7 @@ To run the controls regression without attaching to a desktop, use:
 
 ```powershell
 npm.cmd run validate:controls:isolated
+npm.cmd run validate:composer:isolated
 ```
 
 This starts a hidden Edge instance with a new temporary profile, exercises the
@@ -120,6 +124,8 @@ listboxes, and cmdk menus receive real Tab and Enter key input through CDP.
 The regression checks that selection applies once, clears the command, retains
 editor focus, and never reaches the fixture's submit handler. It also covers an
 earlier native listener inserting a control skill chip during the same key press.
+The composer check also verifies that exporting and importing the in-memory
+adapter cache retains reasoning items absent from the native conversation.
 
 The current implementation has also been checked with local fixed-text provider
 streams in an isolated desktop profile. That development evidence is not bundled:
@@ -127,7 +133,8 @@ the public repository excludes real session diagnostics, extracted application
 bundles, local runtime profiles, and investigation artifacts.
 
 `npm.cmd run viewer:update -- <verified-port>` hot-updates an already attached
-viewer while retaining its native managers and view preferences. It verifies the
+viewer while retaining its native managers, complete in-memory history, and view
+preferences. It verifies the
 installed build and endpoint owner first. It does not open a model turn.
 
 ## Remove

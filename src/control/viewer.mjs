@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { CdpConnection, listTargets } from '../native/cdp.mjs';
 import { isComposerPage } from '../native/attach.mjs';
+import { validateSettingsPatch } from './settings.mjs';
 import {
   findInstallation,
   verifyInstallation,
@@ -10,7 +11,7 @@ import {
 } from '../native/installation.mjs';
 
 const project = resolve(import.meta.dirname, '../..');
-const actions = new Set(['status', 'show', 'hide', 'toggle']);
+const actions = new Set(['status', 'show', 'hide', 'toggle', 'configure']);
 const statusExpression = `(()=>{
   const panel=window.__codexReasoningViewer;
   if(!panel||!window.__codexReasoningNativeAdapter)return null;
@@ -50,8 +51,9 @@ export function createViewerController({
   targets = listTargets,
   connect = (url) => CdpConnection.connect(url),
 } = {}) {
-  return async function control(action) {
+  return async function control(action, settings) {
     if (!actions.has(action)) throw new TypeError('Unknown viewer control action');
+    const patch = action === 'configure' ? validateSettingsPatch(settings) : null;
     let state;
     try {
       state = await readState();
@@ -90,7 +92,14 @@ export function createViewerController({
       }
       if (!connections.length) return { connected: false, reason: 'viewer-not-attached' };
       let enabled = connections.some((entry) => entry.enabled);
-      if (action !== 'status') {
+      if (action === 'configure') {
+        for (const entry of connections) {
+          const applied = await entry.connection.evaluate(
+            `(()=>{const panel=window.__codexReasoningViewer;if(typeof panel.configure!=='function')return false;panel.configure(${JSON.stringify(patch)});return true;})()`,
+          );
+          if (applied !== true) return { connected: false, reason: 'viewer-update-required' };
+        }
+      } else if (action !== 'status') {
         enabled = action === 'toggle' ? !enabled : action === 'show';
         for (const entry of connections) {
           await entry.connection.evaluate(

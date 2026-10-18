@@ -24,7 +24,7 @@
   hint.setAttribute('role', 'status');
   hint.style.cssText =
     'font-size:12px;line-height:1.5;padding:5px 10px;margin-bottom:6px;border-radius:8px;background:color-mix(in srgb,currentColor 7%,transparent);opacity:.8;';
-  const usage = '/cot \u5207\u6362 \u00b7 /cot on \u663e\u793a \u00b7 /cot off \u9690\u85cf';
+  const usage = '/cot: toggle | /cot on: show | /cot off: hide';
 
   function parseCommand(value) {
     if (/[\r\n]/.test(value)) return null;
@@ -169,16 +169,16 @@
     }
     const label =
       action === 'show'
-        ? '\u663e\u793a'
+        ? 'Show'
         : action === 'hide'
-          ? '\u9690\u85cf'
+          ? 'Hide'
           : api.status().enabled
-            ? '\u9690\u85cf'
-            : '\u663e\u793a';
+            ? 'Hide'
+            : 'Show';
     showHint(
       action === 'invalid'
         ? usage
-        : 'Tab / Enter\uff1a' + label + '\u601d\u8003\u680f \u00b7 \u7acb\u5373\u751f\u6548',
+        : 'Tab / Enter: ' + label + ' reasoning viewer | apply immediately',
     );
   }
   function clearEditor(editor) {
@@ -214,9 +214,7 @@
       hint.remove();
     } catch (error) {
       lastError = String(error?.message ?? error).slice(0, 160);
-      showHint(
-        '\u672c\u5730\u6307\u4ee4\u672a\u6267\u884c\uff0c\u8bf7\u91cd\u8bd5 /cot on \u6216\u68c0\u67e5\u540e\u53f0\u72b6\u6001',
-      );
+      showHint('Control was not applied. Retry /cot on or check the background helper.');
     }
     return true;
   }

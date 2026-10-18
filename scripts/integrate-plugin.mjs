@@ -3,6 +3,7 @@ import { copyFile, mkdir, readFile, writeFile, realpath } from 'node:fs/promises
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { powershell } from '../src/native/installation.mjs';
+import { SETTINGS_ENV } from '../src/control/settings.mjs';
 
 export async function buildControlPlugin(project, nodePath = process.execPath) {
   project = resolve(project);
@@ -19,12 +20,20 @@ export async function buildControlPlugin(project, nodePath = process.execPath) {
     await mkdir(directory, { recursive: true });
     await copyFile(join(project, 'plugin/skills', name, 'SKILL.md'), join(directory, 'SKILL.md'));
   }
+  const environment = {};
+  try {
+    const previous = JSON.parse(await readFile(join(packageRoot, 'mcp.json'), 'utf8'));
+    const values = previous.mcpServers?.['reasoning-control']?.env ?? {};
+    for (const name of Object.values(SETTINGS_ENV))
+      if (typeof values[name] === 'string') environment[name] = values[name];
+  } catch {}
   const config = {
     $schema: 'https://agent-plugins.org/schemas/1.0.0/mcp.schema.json',
     mcpServers: {
       'reasoning-control': {
         command: nodePath,
         args: [join(project, 'src/control/server.mjs')],
+        env: environment,
       },
     },
   };

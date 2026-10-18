@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { copyFile, mkdir, mkdtemp, readFile, rm, access } from 'node:fs/promises';
+import { copyFile, mkdir, mkdtemp, readFile, rm, access, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve, join } from 'node:path';
 import { buildControlPlugin } from '../scripts/integrate-plugin.mjs';
@@ -42,6 +42,7 @@ test('generated plugin separates executable arguments and contains the three rea
     assert.deepEqual(mcp.mcpServers['reasoning-control'], {
       command: process.execPath,
       args: [join(project, 'src/control/server.mjs')],
+      env: {},
     });
     for (const name of ['cot', 'cot-on', 'cot-off']) {
       assert.deepEqual(
@@ -54,6 +55,39 @@ test('generated plugin separates executable arguments and contains the three rea
       await readFile(join(state.root, '.agents/plugins/marketplace.json'), 'utf8'),
     );
     assert.equal(marketplace.plugins[0].source.path, './plugins/codex-reasoning-viewer');
+  });
+});
+
+test('rebuilding preserves only the five known viewer environment fields', async () => {
+  await withProjects(async (root) => {
+    const project = await sourceProject(root, 'project');
+    const state = await buildControlPlugin(project);
+    const mcpPath = join(state.packageRoot, 'mcp.json');
+    const mcp = JSON.parse(await readFile(mcpPath, 'utf8'));
+    mcp.mcpServers['reasoning-control'].env = {
+      CODEX_REASONING_MODE: 'raw',
+      CODEX_REASONING_FOLLOW: 'false',
+      CODEX_REASONING_COLLAPSED: 'true',
+      CODEX_REASONING_HEIGHT: '900',
+      CODEX_REASONING_INDICATOR_COLOR: '#ABCDEF',
+      CODEX_REASONING_UNKNOWN: 'drop-me',
+      OTHER_ENV: 'drop-me',
+    };
+    await writeFile(mcpPath, JSON.stringify(mcp, null, 2));
+
+    const rebuilt = await buildControlPlugin(project);
+    const result = JSON.parse(await readFile(join(rebuilt.packageRoot, 'mcp.json'), 'utf8'));
+    assert.deepEqual(result.mcpServers['reasoning-control'], {
+      command: process.execPath,
+      args: [join(project, 'src/control/server.mjs')],
+      env: {
+        CODEX_REASONING_MODE: 'raw',
+        CODEX_REASONING_FOLLOW: 'false',
+        CODEX_REASONING_COLLAPSED: 'true',
+        CODEX_REASONING_HEIGHT: '900',
+        CODEX_REASONING_INDICATOR_COLOR: '#ABCDEF',
+      },
+    });
   });
 });
 

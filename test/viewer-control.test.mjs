@@ -22,6 +22,7 @@ function fixture({ state = { pid: 123, port }, reason = null, pages = [page('fir
     connect: async (url) => ({
       async evaluate(expression) {
         calls.push(expression);
+        if (expression.includes('panel.configure(')) return true;
         return { enabled: true, reasoning: 'MUST_NOT_LEAVE_THE_RENDERER', threadId: 'PRIVATE' };
       },
       close() {
@@ -57,6 +58,31 @@ test('show, hide and toggle execute only a fixed visibility operation', async ()
   }
 });
 
+test('configure evaluates one fixed, validated panel.configure call', async () => {
+  const { control, calls, closed } = fixture();
+  assert.deepEqual(
+    await control('configure', {
+      mode: 'raw',
+      follow: false,
+      collapsed: true,
+      height: null,
+      indicatorColor: '#AbC',
+    }),
+    { connected: true, enabled: true, windows: 1, partial: false },
+  );
+  assert.equal(calls.length, 2);
+  assert.match(calls[0], /panel\.status\(\)/);
+  assert.equal(
+    calls[1],
+    '(()=>{const panel=window.__codexReasoningViewer;if(typeof panel.configure!==\'function\')return false;panel.configure({"mode":"raw","follow":false,"collapsed":true,"height":null,"indicatorColor":"#AbC"});return true;})()',
+  );
+  assert.equal(
+    calls.some((expression) => expression.includes('setEnabled')),
+    false,
+  );
+  assert.equal(closed.length, 1);
+});
+
 test('invalid actions are rejected before any local state is read', async () => {
   let reads = 0;
   const control = createViewerController({
@@ -66,6 +92,31 @@ test('invalid actions are rejected before any local state is read', async () => 
   });
   await assert.rejects(control('run arbitrary code'), /Unknown viewer/);
   assert.equal(reads, 0);
+});
+
+test('invalid configure patches are rejected before local state is read', async () => {
+  for (const patch of [
+    {},
+    { unexpected: true },
+    { mode: 'raw', unexpected: true },
+    { mode: 'RAW' },
+    { follow: 'false' },
+    { height: 63 },
+    { height: 1601 },
+    { indicatorColor: 'red' },
+    { indicatorColor: 'AUTO' },
+    { indicatorColor: '#fff;background:url(javascript:alert(1))' },
+    { indicatorColor: '#fff")+window.evil()+("' },
+  ]) {
+    let reads = 0;
+    const control = createViewerController({
+      readState: async () => {
+        reads++;
+      },
+    });
+    await assert.rejects(control('configure', patch), TypeError);
+    assert.equal(reads, 0);
+  }
 });
 
 test('unverified endpoints and missing startup state never reach a renderer', async () => {
@@ -109,4 +160,29 @@ test('connections close when a visibility operation fails', async () => {
   });
   assert.deepEqual(await control('hide'), { connected: false, reason: 'connection-unavailable' });
   assert.equal(closed, 1);
+});
+
+test('configure reports an old renderer without retrying or leaving connections open', async () => {
+  let closed = 0;
+  const calls = [];
+  const control = createViewerController({
+    readState: async () => ({ pid: 123, port }),
+    verify: async () => null,
+    targets: async () => [page('first'), page('second')],
+    connect: async () => ({
+      async evaluate(expression) {
+        calls.push(expression);
+        return expression.includes('panel.configure(') ? false : { enabled: true };
+      },
+      close() {
+        closed++;
+      },
+    }),
+  });
+  assert.deepEqual(await control('configure', { follow: false }), {
+    connected: false,
+    reason: 'viewer-update-required',
+  });
+  assert.equal(calls.filter((expression) => expression.includes('panel.configure(')).length, 1);
+  assert.equal(closed, 2);
 });

@@ -15,11 +15,16 @@ The viewer does not make external model requests or persist reasoning text.
 `.local/` contains operational metadata and can include paths and thread IDs;
 localStorage contains the viewer's height and visibility preferences.
 
-The optional MCP server exposes only show/hide/toggle/status with no tool
-arguments. It verifies the installed build and debug endpoint owner before using
-fixed visibility operations. Its responses contain minimal control metadata,
+The optional MCP server exposes visibility operations, a settings read, and a
+validated settings patch. The patch permits only display mode, following,
+collapse, bounded height, and an automatic or hex indicator color. It verifies
+the installed build and debug endpoint owner before using fixed renderer
+operations. Its responses contain minimal control metadata and display settings,
 not reasoning or session identifiers. Generated plugin configuration and exact
 skill-path bindings remain under ignored `.local/control-plugin/`.
+
+Hot updates copy the full reasoning cache between owned viewer instances inside
+the renderer. That handoff never returns its text over CDP or writes it to disk.
 
 Local menu controls accept only registered skill paths and a bounded single-block
 draft. Native menu identity is read from a version-bound React key; titles alone
