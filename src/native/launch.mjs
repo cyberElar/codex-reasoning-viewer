@@ -1,19 +1,18 @@
-import { spawn } from 'node:child_process';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { setTimeout as pause } from 'node:timers/promises';
-import {
-  findInstallation,
-  verifyInstallation,
-  runningDesktopProcesses,
-  powershell,
-} from './installation.mjs';
+import { findInstallation, verifyInstallation, runningDesktopProcesses } from './installation.mjs';
 import { managerCaptureSites } from './capture.mjs';
-import { CdpConnection, listTargets } from './cdp.mjs';
+import { listTargets } from './cdp.mjs';
 import { attachViewer, isComposerPage } from './attach.mjs';
 import { claimInstance } from './instance.mjs';
+import { allocateDebugPort, desktopDebugArguments } from './debug-port.mjs';
+import { activatePackagedDesktop, inspectPackageIdentity } from './windows-activation.mjs';
+import { isDesktopProcessRunning } from './desktop-process.mjs';
+import { waitForDesktopEndpoint } from './desktop-endpoint.mjs';
 const project = resolve(import.meta.dirname, '../..'),
   statePath = join(project, '.local/native-launch/status.json');
+const errorMessage = (error) => String(error?.message ?? error).slice(0, 240);
 async function save(state) {
   await mkdir(join(project, '.local/native-launch'), { recursive: true });
   await writeFile(
@@ -22,55 +21,12 @@ async function save(state) {
   );
 }
 async function activate(installation) {
-  const child = spawn(installation.executable, [], {
-    detached: true,
-    windowsHide: false,
-    stdio: 'ignore',
-  });
-  await new Promise((resolve, reject) => {
-    child.once('spawn', resolve);
-    child.once('error', reject);
-  });
-  child.unref();
-}
-async function hasActiveViewer(running) {
-  try {
-    const state = JSON.parse(await readFile(statePath, 'utf8'));
-    if (
-      !running.some((process) => process.ProcessId === state.pid) ||
-      !Number.isInteger(state.port)
-    )
-      return false;
-    const owners = await powershell(
-      'Get-NetTCPConnection -State Listen -LocalPort ' +
-        state.port +
-        ' | Select-Object -ExpandProperty OwningProcess -Unique',
-    );
-    if (!owners.split(/\s+/).includes(String(state.pid))) return false;
-    for (const target of (await listTargets(state.port)).filter(isComposerPage)) {
-      const connection = await CdpConnection.connect(target.webSocketDebuggerUrl);
-      try {
-        if (
-          await connection.evaluate(
-            '!!window.__codexReasoningViewer&&!!window.__codexReasoningNativeAdapter',
-          )
-        )
-          return true;
-      } finally {
-        connection.close();
-      }
-    }
-  } catch {}
-  return false;
+  return activatePackagedDesktop(installation.applicationId);
 }
 async function run(installation, setReady) {
   const running = await runningDesktopProcesses();
   if (running.length) {
-    await activate(installation);
-    if (await hasActiveViewer(running)) {
-      console.log('Codex is already running. Its current viewer and sessions were left active.');
-      return;
-    }
+    // Healthy helpers receive repeat launches over their pipe before run() is entered.
     const guard = await verifyInstallation(installation).catch(() => ({
       supported: false,
       reason: 'Unable to verify this desktop build',
@@ -81,7 +37,7 @@ async function run(installation, setReady) {
     }
     await save({ status: 'requires-closed-desktop', version: guard.version });
     console.log(
-      'Codex is already running without a viewer endpoint. Close it normally once, then use the new shortcut.',
+      'Codex is already running without this helper. Close it normally once, then use the new shortcut.',
     );
     process.exitCode = 3;
     return;
@@ -98,59 +54,57 @@ async function run(installation, setReady) {
     return;
   }
   const sites = await managerCaptureSites(installation.asar);
-  const env = { ...process.env };
-  delete env.ELECTRON_RUN_AS_NODE;
-  delete env.NODE_OPTIONS;
-  const child = spawn(
-    installation.executable,
-    ['--remote-debugging-address=127.0.0.1', '--remote-debugging-port=0'],
-    { detached: true, windowsHide: false, env, stdio: ['ignore', 'ignore', 'pipe'] },
+  const debugPort = await allocateDebugPort();
+  const pid = await activatePackagedDesktop(
+    installation.applicationId,
+    desktopDebugArguments(debugPort),
   );
-  let exited = false,
-    endpoint = null,
-    tail = '',
-    spawnError;
-  child.once('exit', () => {
-    exited = true;
-  });
-  child.once('error', (error) => {
-    spawnError = error;
-    exited = true;
-  });
-  // Read only the endpoint banner; no application log bodies are retained.
-  child.stderr.on('data', (chunk) => {
-    tail = (tail + chunk.toString('utf8')).slice(-8192);
-    const match = tail.match(
-      /DevTools listening on (ws:\/\/127\.0\.0\.1:(\d+)\/devtools\/browser\/[\w-]+)/,
+  async function disableViewer(status, reason) {
+    const alive = isDesktopProcessRunning(pid);
+    await save({
+      status: alive ? status : 'startup-exited',
+      version: guard.version,
+      pid,
+      port: debugPort,
+      reason,
+    });
+    console.log(
+      alive
+        ? 'Codex started; viewer disabled. See .local/native-launch/status.json for the reason.'
+        : 'Codex exited before the reasoning viewer became ready.',
     );
-    if (match) endpoint = { url: match[1], port: Number(match[2]) };
-  });
-  for (let i = 0; i < 150 && !endpoint && !exited; i++) await pause(200);
-  if (spawnError) throw spawnError;
-  if (!endpoint) {
-    await save({ status: 'capture-unavailable', version: guard.version });
-    child.stderr.destroy();
-    child.unref();
-    console.log('Codex started; native viewer could not obtain its temporary endpoint.');
+    if (!alive) process.exitCode = 1;
+  }
+  let identity;
+  try {
+    identity = await inspectPackageIdentity(pid);
+  } catch (error) {
+    await disableViewer('package-identity-not-verified', errorMessage(error));
+    return;
+  }
+  if (!identity.packaged || identity.packageFullName !== installation.packageFullName) {
+    await disableViewer(
+      'package-identity-not-verified',
+      'The activated process does not belong to the expected Windows package.',
+    );
     return;
   }
   try {
-    const ownerText = await powershell(
-      'Get-NetTCPConnection -State Listen -LocalPort ' +
-        endpoint.port +
-        ' | Select-Object -ExpandProperty OwningProcess -Unique',
-    );
-    if (!ownerText.split(/\s+/).includes(String(child.pid)))
-      throw new Error('Unexpected endpoint owner');
-  } catch {
-    child.stderr.destroy();
-    child.unref();
-    await save({ status: 'endpoint-not-verified', version: guard.version });
-    console.log('Codex started; viewer disabled because its endpoint could not be verified.');
+    if (!(await waitForDesktopEndpoint(pid, debugPort))) {
+      await disableViewer(
+        'capture-unavailable',
+        'No owned loopback listener appeared before the startup timeout.',
+      );
+      return;
+    }
+  } catch (error) {
+    await disableViewer('endpoint-not-verified', errorMessage(error));
     return;
   }
+  const endpoint = { port: debugPort };
   const views = new Map();
-  let stopping = false,
+  let exited = false,
+    stopping = false,
     lastState = null,
     lastSavedAt = 0;
   const stop = () => {
@@ -163,9 +117,11 @@ async function run(installation, setReady) {
     const state = {
       status,
       version: guard.version,
-      pid: child.pid,
+      pid,
       helperPid: process.pid,
       port: endpoint.port,
+      launchMethod: 'package-activation',
+      packageFullName: identity.packageFullName,
       targets,
       ...(error ? { error } : {}),
     };
@@ -177,14 +133,17 @@ async function run(installation, setReady) {
       lastSavedAt = Date.now();
     }
   }
-  const errorMessage = (error) => String(error?.message ?? error).slice(0, 240);
-  setReady();
+  setReady(pid);
   await report('waiting-for-window');
   console.log(
     'Native reasoning viewer is connecting. See .local/native-launch/status.json for attachment and visibility.',
   );
   try {
     while (!stopping && !exited) {
+      if (!isDesktopProcessRunning(pid)) {
+        exited = true;
+        break;
+      }
       let targets;
       try {
         targets = await listTargets(endpoint.port);
@@ -255,29 +214,32 @@ async function run(installation, setReady) {
       await pause(1000);
     }
   } finally {
+    setReady(null);
     for (const view of views.values()) await view.dispose();
-    child.stderr.destroy();
-    child.unref();
     await report(exited ? 'desktop-exited' : 'viewer-stopped');
   }
 }
 async function main() {
   const installation = await findInstallation();
-  let ready = false;
+  let activePid = null;
   const instance = await claimInstance(project, async () => {
-    if (ready) await activate(await findInstallation());
+    if (!activePid || !isDesktopProcessRunning(activePid)) return false;
+    await activate(installation);
+    return true;
   });
   if (!instance) return;
   try {
-    await run(installation, () => {
-      ready = true;
+    await run(installation, (pid) => {
+      activePid = pid;
     });
+  } catch (error) {
+    await save({ status: 'error', message: error.message }).catch(() => {});
+    throw error;
   } finally {
     await instance.close();
   }
 }
-main().catch(async (error) => {
+main().catch((error) => {
   console.error(error.message);
-  await save({ status: 'error', message: error.message }).catch(() => {});
   process.exitCode = 1;
 });

@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.4.1 - 2026-10-18
+
+- Select a free loopback port in the helper and pass its explicit nonzero number
+  to Chromium, avoiding the automation side effect of `--remote-debugging-port=0`.
+- Activate the registered Windows package instead of spawning the executable
+  directly, preserving package identity for updater and restart integration.
+- Wait for the activated process's loopback listener and reject unexpected owners
+  before connecting to the desktop.
+- Keep already running desktops intact, report when a normal reopen is required,
+  and allow more time for repeated package activation.
+- Add Windows COM and listener checks, port/argument validation, and an isolated
+  browser comparison of the old and new startup flags to CI.
+
 ## 0.4.0 - 2026-10-18
 
 - Shrink the panel to one header line and one reasoning line, then further to a

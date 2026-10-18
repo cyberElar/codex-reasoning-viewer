@@ -17,13 +17,24 @@ Install/remove shortcuts with `npm.cmd run shortcuts:install` and
 Start Menu folders, including redirected desktops. It will not overwrite an
 unrelated shortcut.
 
-The helper resolves the current MSIX installation dynamically. Its shortcut icon
-is copied locally, so shortcuts do not depend on an old WindowsApps version path.
+The helper resolves the current MSIX installation and registered application ID
+dynamically. It uses Windows package activation, preserving the identity required
+by the updater and Windows restart integration. Its shortcut icon is copied
+locally, so shortcuts do not depend on an old WindowsApps version path.
 The shortcut manifest is `.local/native-integration/shortcuts.json`.
 
 If an ordinary desktop is already running, finish work, exit it normally, then
 use the project entry. A startup-only debug flag cannot be added by activation.
 An attached running desktop continues normally and is activated on repeat launch.
+
+The helper selects an explicit nonzero loopback debugging port. A literal
+`--remote-debugging-port=0` changes Chromium's automation state. Updating the
+launcher changes the next cold launch; Retry or activating an already running
+process cannot replace its startup flags.
+
+This is Chromium's built-in behavior, as recorded in
+[runtime_features.cc](https://github.com/chromium/chromium/blob/main/content/child/runtime_features.cc).
+The launcher does not override browser properties or alter account/network data.
 
 No Windows sign-in task, registry launch hook, official shortcut rewrite, or
 installed file patch is used.
@@ -76,7 +87,9 @@ Check `.local/native-launch/status.json` locally before sharing a redacted repor
 | `waiting-for-manager`                         | Waiting for a native manager method to execute            |
 | `requires-closed-desktop`                     | Normal exit/reopen through the project entry needed       |
 | `disabled-for-build`                          | Version/assets not verified; official app starts normally |
-| `capture-unavailable`                         | Desktop started but no endpoint banner was obtained       |
+| `package-identity-not-verified`               | Activated process does not belong to the expected package |
+| `capture-unavailable`                         | Desktop started but no verified listener appeared         |
+| `startup-exited`                              | Activated desktop exited before its listener appeared     |
 | `endpoint-not-verified`                       | Port ownership did not pass verification                  |
 | `connection-unavailable` / `attachment-error` | Inspect the short error locally                           |
 
@@ -97,9 +110,12 @@ npm.cmd run format:check
 npm.cmd test
 ```
 
-The unit suite uses synthetic fixtures and fake callbacks. It verifies command
-parsing, composer selection, local fixture streams, update guards, and activation
-channel behavior. It does not need an installed desktop or account.
+The unit suite uses synthetic fixtures, fake callbacks, and non-activating Windows
+interop probes. It verifies command parsing, composer selection, local fixture
+streams, update guards, and activation channel behavior. It does not need an
+installed desktop or account and never calls `ActivateApplication`.
+Run it with ordinary Windows user permissions; restricted sandboxes can block
+system listener queries and out-of-process COM creation.
 
 Optional renderer regressions:
 
@@ -131,6 +147,17 @@ editor focus, and never reaches the fixture's submit handler. It also covers an
 earlier native listener inserting a control skill chip during the same key press.
 The composer check also verifies that exporting and importing the in-memory
 adapter cache retains reasoning items absent from the native conversation.
+
+To compare the old and current startup flags in isolated blank Edge windows:
+
+```powershell
+npm.cmd run validate:launch:isolated
+```
+
+This separate check uses ordinary windows positioned off screen, since headless
+mode would itself enable automation. It verifies that a literal port zero sets
+`navigator.webdriver` while the helper's explicit nonzero port does not. It uses
+temporary profiles, visits no website, and leaves the running Codex untouched.
 
 The current implementation has also been checked with local fixed-text provider
 streams in an isolated desktop profile. That development evidence is not bundled:

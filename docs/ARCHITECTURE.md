@@ -9,7 +9,7 @@ flowchart TD
     Shortcut["Project shortcut / VBS / terminal"] --> Launcher["Node launcher"]
     Launcher --> Guard["Discover MSIX and verify build"]
     Guard -->|unknown or changed| Normal["Ordinary official startup"]
-    Guard -->|verified| Desktop["Official desktop with random loopback CDP port"]
+    Guard -->|verified| Desktop["Registered Windows app with random loopback CDP port"]
     Desktop --> Capture["Capture existing managers; remove probes"]
     Capture --> Adapter["Notifications + loaded cache snapshots"]
     Adapter --> History["Merge turns and reasoning items"]
@@ -29,14 +29,27 @@ The helper claims a named pipe derived from the current user's home and project
 path. A second launcher can request only a fixed `activate` command. The protocol
 does not evaluate supplied code or return reasoning/debug endpoints.
 
-The launcher discovers the registered MSIX location each time. It verifies the
-internal application version plus renderer asset SHA-256 values before enabling
-capture. Unknown or changed builds start normally.
+The launcher discovers the registered MSIX location and application identity from
+its manifest each time. It verifies the internal application version plus
+renderer asset SHA-256 values before enabling capture. Unknown or changed builds
+start normally.
 
-On a cold, verified launch, the official executable receives only temporary
-loopback debug flags. The helper checks TCP ownership and accepts only eligible
-`app://-/index.html` composer pages. Overlay pages are excluded. It stays alive
-until the desktop exits.
+On a cold, verified launch, Windows activates the registered application through
+`IApplicationActivationManager`, with only temporary loopback debug flags.
+The short-lived PowerShell host uses `CLSCTX_LOCAL_SERVER` so activation argument
+lifetime is independent of the host.
+Activation preserves the package identity used by the updater and restart
+lifecycle; launching the package's executable directly does not.
+The helper verifies that the resulting process belongs to the expected package.
+
+The helper briefly binds a loopback socket to select an available port, closes
+that socket, and passes its explicit nonzero number to Chromium. Passing a
+literal `--remote-debugging-port=0` would instead enable Chromium's automation
+state in an otherwise ordinary desktop window. The helper waits for the activated
+PID to own that loopback listener before making a CDP request, and accepts only
+eligible `app://-/index.html` composer pages. Overlay pages are excluded.
+Process existence checks use signal zero, without sending a real signal or
+terminating the app. The helper stays alive until the desktop exits.
 
 An already running ordinary desktop cannot acquire the needed startup flag
 through second-instance activation. The helper activates it and requests one
