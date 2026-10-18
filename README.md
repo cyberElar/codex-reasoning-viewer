@@ -7,8 +7,9 @@ reasoning summaries, follow incoming text, and revisit earlier turns without
 changing the installed Codex application.
 
 This is an **experimental, unofficial companion**. It uses private desktop
-interfaces and supports only explicitly verified builds. It does not use MCP,
-modify the ASAR, replace the application directory, or alter model settings.
+interfaces and supports only explicitly verified builds. The reasoning path uses
+the native adapter; an optional plugin adds MCP controls and slash-menu skills.
+It does not modify the ASAR, replace the application directory, or alter model settings.
 
 ## Features
 
@@ -19,8 +20,9 @@ modify the ASAR, replace the application directory, or alter model settings.
 - **Turn history:** keep multiple reasoning items together within a turn, browse
   earlier turns, and return to the latest without losing already observed items.
 - **Resizable panel:** drag the top grip; double-click to reset its height.
-- **Local controls:** `/cot`, `/cot on`, and `/cot off`, plus hide/show buttons.
-  Hiding keeps the helper and history capture running.
+- **Local controls:** `/cot`, `/cot on`, and `/cot off`, plus a hide button.
+  Hiding removes the entire panel without a placeholder or reopen button, while
+  the helper and history capture keep running. Use `/cot on` to reopen.
 - **Background launcher:** optional desktop and Start Menu shortcuts start Codex
   and the hidden helper together. Repeated launches activate the existing window.
 - **Build guard:** unknown or changed desktop builds start normally with the
@@ -87,21 +89,21 @@ official launch path. The debug endpoint must be enabled when Codex starts.
 Open a local conversation containing reasoning. The panel appears above its
 composer; the companion follows the active visible conversation.
 
-| Action                            | Result                                 |
-| --------------------------------- | -------------------------------------- |
-| `/cot`                            | Toggle panel visibility                |
-| `/cot on`                         | Show the panel                         |
-| `/cot off`                        | Hide the panel; keep capturing history |
-| Auto / Summary / Raw selector     | Choose which readable text to display  |
-| Previous / next / turn selector   | Browse the current session by turn     |
-| 回到最新                          | Return to the latest turn              |
-| 跟随                              | Resume automatic scrolling             |
-| Hide button / small 思考 button   | Hide / reopen without typing a command |
-| Drag top grip / double-click grip | Resize / reset the panel               |
+| Action                            | Result                                           |
+| --------------------------------- | ------------------------------------------------ |
+| `/cot`                            | Toggle panel visibility                          |
+| `/cot on`                         | Show the panel                                   |
+| `/cot off`                        | Hide the panel; keep capturing history           |
+| Auto / Summary / Raw selector     | Choose which readable text to display            |
+| Previous / next / turn selector   | Browse the current session by turn               |
+| 回到最新                          | Return to the latest turn                        |
+| 跟随                              | Resume automatic scrolling                       |
+| Hide button                       | Completely hide the panel; reopen with `/cot on` |
+| Drag top grip / double-click grip | Resize / reset the panel                         |
 
 Enter a local command alone on one line, with the caret at its end, then press
 Enter or click Send/Queue. The local handler consumes it before model submission.
-Commands do not appear as registered items in the official slash-command menu.
+The base launcher handles typed commands; the optional plugin adds native skill-menu entries.
 `show`, `hide`, and `toggle` are accepted aliases. Invalid `/cot` arguments stay in
 the composer with a usage hint.
 
@@ -113,6 +115,36 @@ History is retained in memory for the helper's lifetime and hydrated from record
 already loaded by Codex. Older paginated records appear when the desktop loads
 them. The viewer does not independently fetch every session or persist a second
 copy of reasoning text.
+
+## Optional MCP and slash-menu controls
+
+```powershell
+npm.cmd run plugin:install
+```
+
+This installs a local plugin through the official Codex CLI. It provides the
+`cot`, `cot-on`, and `cot-off` skills in the native slash menu, plus four MCP tools:
+`viewer_show`, `viewer_hide`, `viewer_toggle`, and `viewer_status`.
+The MCP tools return only minimal control state, never reasoning text.
+
+In the supported desktop, the attached local handler identifies this plugin's
+exact skill paths and handles keyboard/menu selection without a model turn.
+If the native menu first inserts a skill chip, press Enter to run the local
+control. Other skill chips and mixed prose/attachments retain native behavior.
+In a client without that attached handler, using the skill follows the ordinary
+model/tool workflow instead.
+
+**Keep using the project launcher.** MCP servers start with a session, after
+Chromium initialization; they cannot add a missing debug port to an already
+running desktop. No app-start hook is installed. The existing helper still owns
+reasoning capture, rendering, and history.
+
+The generated package and path bindings stay in ignored `.local/control-plugin/`.
+After installation or an update, start a fresh conversation or normally reopen
+Codex if its current skill catalog has not refreshed. See
+[control plugin details](docs/CONTROL-PLUGIN.md).
+
+To remove only the optional controls: `npm.cmd run plugin:remove`.
 
 ## How it works
 

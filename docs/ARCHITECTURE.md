@@ -1,7 +1,8 @@
 # Architecture
 
 The companion consists of a Node.js launcher and plain JavaScript running
-temporarily in the official desktop renderer. Runtime code has no npm dependency.
+temporarily in the official desktop renderer. The native path has no npm dependency.
+An optional, separate control process uses the MCP SDK.
 
 ```mermaid
 flowchart TD
@@ -14,6 +15,8 @@ flowchart TD
     Adapter --> History["Merge turns and reasoning items"]
     History --> Panel["Above-composer DOM panel"]
     Commands["Local /cot and buttons"] --> Visibility["Visibility preference"]
+    Skills["Optional native skill menu"] --> Commands
+    MCP["Optional MCP control server"] -->|"Verified short CDP operation"| Visibility
     Visibility --> Panel
 ```
 
@@ -78,11 +81,24 @@ editor selection and browser editing command. It does not mutate ProseMirror's
 internal document directly. Unrelated drafts and the Stop button retain native
 handling.
 
+An optional plugin registers three skills, rather than attempting to register
+MCP prompts as native slash actions. The local handler accepts only exact paths
+registered by the installer. It can identify a selected native option from its
+read-only React key and consume the choice locally; if native selection inserts a
+`skillMention` chip first, that same exact-path check applies on Enter.
+Other paths, attachments, and mixed text remain native drafts.
+
+The separate MCP server provides only four fixed visibility tools. It opens a
+short connection to the already verified desktop endpoint, changes only the panel
+preference, and returns minimal state. Reasoning deltas never flow through it.
+See [control plugin details](CONTROL-PLUGIN.md) for lifecycle and installation.
+
 ## Visibility and data
 
-Hiding the panel leaves the adapter, helper, and in-memory history running. A
-compact button reopens it. Height and enabled state use namespaced localStorage
-keys; reasoning text is not written there.
+Hiding the panel detaches its DOM and removes the command hint. No reopen button
+or placeholder remains. The adapter, helper, and in-memory history keep running;
+the local `/cot on` command remounts the panel. Height and enabled state use
+namespaced localStorage keys; reasoning text is not written there.
 
 Launch records, shortcut manifests, copied icons, and synthetic reports live in
 ignored `.local/`. Status records can contain local paths and thread IDs. The

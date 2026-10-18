@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.0 - 2026-10-18
+
+- Fully hide the panel without a reopen button, border, or layout space.
+- Keep background history capture active and restore the panel with `/cot on`.
+- Verify that hidden startup and preference changes leave no visible viewer UI.
+- Add an optional MCP control server with four fixed, zero-argument tools.
+- Add native slash-menu skills and local handling for verified skill paths.
+- Generate machine-specific plugin packages under ignored local state and install
+  them through the official Codex CLI.
+
 ## 0.1.0 - 2026-10-18
 
 Initial public source release.

@@ -17,19 +17,84 @@
   } catch {}
   const panel = document.createElement('section');
   panel.dataset.reasoningViewer = 'codex-reasoning-viewer-v1';
-  panel.style.cssText =
-    'margin:0 0 6px;min-width:0;border:1px solid color-mix(in srgb,currentColor 14%,transparent);border-radius:12px;background:var(--color-background-primary,transparent);font-size:12px;line-height:1.5;overflow:hidden;';
+  // A constructed sheet gives hover/focus states without an inline <style>, which CSP may block.
+  const scope = '[data-reasoning-viewer="codex-reasoning-viewer-v1"]',
+    part = (name) => scope + ' [data-reasoning-viewer-part="' + name + '"]';
+  let sheet = null;
+  try {
+    sheet = new CSSStyleSheet();
+    sheet.replaceSync(
+      [
+        scope +
+          '{--rv-line:color-mix(in srgb,currentColor 11%,transparent);--rv-fill:color-mix(in srgb,currentColor 7%,transparent);--rv-muted:color-mix(in srgb,currentColor 58%,transparent);box-sizing:border-box;margin:0 0 6px;min-width:0;border:1px solid var(--rv-line);border-radius:12px;background-color:var(--color-background-primary,transparent);background-image:linear-gradient(color-mix(in srgb,currentColor 2.5%,transparent),color-mix(in srgb,currentColor 2.5%,transparent));font-size:12px;line-height:1.5;overflow:hidden}',
+        scope + '[hidden],' + scope + ' [hidden]{display:none!important}',
+        part('header') +
+          '{display:flex;align-items:center;gap:2px;min-height:28px;padding:1px 4px 1px 10px}',
+        part('dot') +
+          '{flex:none;width:6px;height:6px;margin-right:6px;border-radius:50%;background:currentColor;opacity:.3}',
+        part('dot') +
+          '[data-running]{opacity:.85;animation:codex-reasoning-viewer-pulse 1.4s ease-in-out infinite}',
+        '@keyframes codex-reasoning-viewer-pulse{50%{opacity:.2}}',
+        part('title') + '{flex:none;font-weight:500;white-space:nowrap}',
+        part('source') +
+          '{flex:1 1 auto;min-width:0;margin-left:8px;color:var(--rv-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+        scope +
+          ' button,' +
+          scope +
+          ' select' +
+          '{box-sizing:border-box;flex:none;height:22px;margin:0;padding:0 7px;border:0;border-radius:6px;font:inherit;color:inherit;background:transparent;opacity:.62;cursor:pointer;transition:background-color .12s,opacity .12s}',
+        scope + ' select{min-width:0;padding:0 2px 0 6px}',
+        scope +
+          ' button:hover:not(:disabled),' +
+          scope +
+          ' select:hover,' +
+          scope +
+          ' button[aria-pressed="true"]{opacity:1;background:var(--rv-fill)}',
+        scope + ' button:disabled{opacity:.25;cursor:default}',
+        scope +
+          ' button:focus-visible,' +
+          scope +
+          ' select:focus-visible,' +
+          scope +
+          ' pre:focus-visible{opacity:1;outline:2px solid color-mix(in srgb,currentColor 28%,transparent);outline-offset:-2px}',
+        part('navigation') + '{display:flex;align-items:center;gap:2px;padding:0 4px 4px}',
+        scope +
+          ' [data-reasoning-viewer-previous-turn],' +
+          scope +
+          ' [data-reasoning-viewer-next-turn]{width:22px;padding:0;font-size:15px;line-height:1}',
+        scope + ' [data-reasoning-viewer-turn]{max-width:240px;font-variant-numeric:tabular-nums}',
+        scope +
+          ' [data-reasoning-viewer-latest]{margin-left:auto;opacity:.85;background:var(--rv-fill)}',
+        scope +
+          ' pre{box-sizing:border-box;margin:0;padding:8px 12px 10px;border-top:1px solid var(--rv-line);max-height:200px;overflow:auto;overscroll-behavior:contain;font:inherit;color:color-mix(in srgb,currentColor 82%,transparent);white-space:pre-wrap;overflow-wrap:anywhere;user-select:text;scrollbar-width:thin;scrollbar-color:color-mix(in srgb,currentColor 22%,transparent) transparent}',
+        // resize.js styles its grip inline; keep it quiet until the handle is used.
+        scope +
+          ' [data-reasoning-viewer-resize]>span{opacity:.15!important;transition:opacity .12s}',
+        scope +
+          ' [data-reasoning-viewer-resize]:hover>span,' +
+          scope +
+          ' [data-reasoning-viewer-resize]:focus-visible>span{opacity:.45!important}',
+        '@media (prefers-reduced-motion:reduce){' +
+          scope +
+          ' *{transition:none!important;animation:none!important}}',
+      ].join('\n'),
+    );
+    document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
+  } catch {
+    sheet = null;
+  }
   const bar = document.createElement('div');
-  bar.style.cssText = 'display:flex;align-items:center;flex-wrap:wrap;gap:8px;padding:7px 10px;';
+  bar.dataset.reasoningViewerPart = 'header';
+  const dot = document.createElement('span');
+  dot.dataset.reasoningViewerPart = 'dot';
+  dot.setAttribute('aria-hidden', 'true');
   const title = document.createElement('strong');
+  title.dataset.reasoningViewerPart = 'title';
   title.textContent = '\u601d\u8003';
   const source = document.createElement('span');
-  source.style.cssText = 'opacity:.6;flex:1;';
+  source.dataset.reasoningViewerPart = 'source';
   const select = document.createElement('select');
   select.setAttribute('aria-label', '\u601d\u8003\u5185\u5bb9');
-  const selectStyle =
-    'font:inherit;color:inherit;background:transparent;border:0;outline-offset:3px;min-width:0;';
-  select.style.cssText = selectStyle;
   for (const [value, label] of [
     ['auto', '\u81ea\u52a8'],
     ['summary', '\u6458\u8981'],
@@ -44,8 +109,6 @@
     const node = document.createElement('button');
     node.type = 'button';
     node.textContent = text;
-    node.style.cssText =
-      'font:inherit;color:inherit;background:transparent;border:0;cursor:pointer;opacity:.7;';
     if (label) {
       node.title = label;
       node.setAttribute('aria-label', label);
@@ -57,14 +120,9 @@
     hideButton = button('\u9690\u85cf');
   toggle.setAttribute('aria-expanded', 'true');
   hideButton.title = '/cot off';
-  bar.append(title, source, select, followButton, toggle, hideButton);
-  const showButton = button('\u601d\u8003', '\u663e\u793a\u601d\u8003\u680f /cot on');
-  showButton.dataset.reasoningViewerShow = '';
-  showButton.style.cssText +=
-    'padding:5px 10px;margin-bottom:6px;border:1px solid color-mix(in srgb,currentColor 14%,transparent);border-radius:8px;';
+  bar.append(dot, title, source, select, followButton, toggle, hideButton);
   const navigation = document.createElement('div');
-  navigation.style.cssText =
-    'display:flex;align-items:center;flex-wrap:wrap;gap:6px;padding:0 10px 6px;';
+  navigation.dataset.reasoningViewerPart = 'navigation';
   const previous = button('\u2039', '\u4e0a\u4e00\u56de\u5408'),
     next = button('\u203a', '\u4e0b\u4e00\u56de\u5408');
   previous.dataset.reasoningViewerPreviousTurn = '';
@@ -72,15 +130,12 @@
   const turnSelect = document.createElement('select');
   turnSelect.dataset.reasoningViewerTurn = '';
   turnSelect.setAttribute('aria-label', '\u9009\u62e9\u601d\u8003\u56de\u5408');
-  turnSelect.style.cssText = selectStyle + 'max-width:240px;';
   const latest = button('\u56de\u5230\u6700\u65b0');
   latest.dataset.reasoningViewerLatest = '';
   navigation.append(previous, turnSelect, next, latest);
   const body = document.createElement('pre');
   body.tabIndex = 0;
   body.setAttribute('aria-label', '\u5b8c\u6574\u601d\u8003\u5185\u5bb9');
-  body.style.cssText =
-    'font:inherit;white-space:pre-wrap;overflow-wrap:anywhere;margin:0;padding:0 10px 9px;max-height:200px;overflow:auto;overscroll-behavior:contain;user-select:text;';
   panel.append(bar, navigation, body);
   function session(id = current) {
     if (!sessions.has(id))
@@ -142,8 +197,6 @@
     turnSelect.value = turn?.turnId ?? '';
     previous.disabled = index <= 0;
     next.disabled = index < 0 || index >= count - 1;
-    previous.style.opacity = previous.disabled ? '.3' : '.8';
-    next.style.opacity = next.disabled ? '.3' : '.8';
     latest.hidden = state.followingLatest;
     latest.textContent =
       '\u56de\u5230\u6700\u65b0' +
@@ -153,11 +206,11 @@
   function render() {
     renderScheduled = false;
     if (disposed) return;
+    if (!enabled) return;
+    mount();
     const state = current ? session() : { turns: [], followingLatest: true },
       turn = activeTurn();
-    panel.hidden = !enabled || !current || !state.turns.length;
-    showButton.hidden = enabled;
-    if (!enabled) return;
+    panel.hidden = !current || !state.turns.length;
     const value = chosen(turn);
     const empty =
       mode === 'summary'
@@ -176,7 +229,8 @@
       else body.textContent = text;
     }
     source.textContent = value.label + (turn?.isRunning ? ' \u00b7 \u8fdb\u884c\u4e2d' : '');
-    followButton.style.opacity = follow ? '1' : '.45';
+    dot.toggleAttribute('data-running', turn?.isRunning === true);
+    followButton.setAttribute('aria-pressed', String(follow));
     syncNavigation(state, turn);
     if (resetScroll) {
       body.scrollTop = 0;
@@ -220,19 +274,25 @@
     );
   }
   function mount() {
-    if (disposed) return false;
+    if (disposed || !enabled) return false;
     const target = composerTarget();
     if (!target) return false;
     if (panel.parentElement !== target) target.append(panel);
-    if (showButton.parentElement !== target) target.append(showButton);
     return true;
   }
   function setEnabled(value, { save = true } = {}) {
     enabled = value === true;
+    if (!enabled) {
+      panel.hidden = true;
+      panel.remove();
+    }
     if (save)
       try {
         window.localStorage.setItem(enabledKey, String(enabled));
       } catch {}
+    window.dispatchEvent(
+      new CustomEvent('codex-reasoning-viewer:visibility', { detail: { enabled } }),
+    );
     schedule();
     return enabled;
   }
@@ -314,7 +374,6 @@
     { signal },
   );
   hideButton.addEventListener('click', () => setEnabled(false), { signal });
-  showButton.addEventListener('click', () => setEnabled(true), { signal });
   window.addEventListener(
     'storage',
     (event) => {
@@ -453,7 +512,8 @@
       controller.abort();
       observer.disconnect();
       panel.remove();
-      showButton.remove();
+      if (sheet)
+        document.adoptedStyleSheets = document.adoptedStyleSheets.filter((item) => item !== sheet);
       sessions.clear();
       delete window[key];
       return { disposed: true };

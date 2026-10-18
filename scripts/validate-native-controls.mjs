@@ -85,9 +85,28 @@ try {
     Object.defineProperty(editor,'pmViewDesc',{value:{get node(){
       const block=editor.firstElementChild;
       return{childCount:editor.children.length,textContent:editor.textContent,firstChild:block?{
-        isTextblock:true,childCount:block.childNodes.length,child:index=>({isText:block.childNodes[index]?.nodeType===3}),
+        isTextblock:true,childCount:block.childNodes.length,child:index=>{
+          const node=block.childNodes[index];
+          if(node.nodeType===3)return{isText:true,text:node.nodeValue};
+          return{isText:false,type:{name:node.hasAttribute('skill-mention-path')?'skillMention':'attachment'},
+            attrs:{name:node.getAttribute('skill-mention-name'),path:node.getAttribute('skill-mention-path')}};
+        },
       }:null};
     }}});
+    window.__fixtureSetSkill=(name,path,{prefix='',suffix=' ',other=false}={})=>{
+      const p=document.createElement('p'),chip=document.createElement('span');
+      chip.contentEditable='false';chip.textContent='$'+name;
+      chip.setAttribute('skill-mention-name',name);chip.setAttribute('skill-mention-path',path);
+      p.append(prefix,chip,suffix);
+      if(other)p.append(document.createElement('img'));
+      editor.replaceChildren(p);editor.focus({preventScroll:true});
+      const range=document.createRange();range.selectNodeContents(editor);range.collapse(false);
+      const selection=getSelection();selection.removeAllRanges();selection.addRange(range);
+      editor.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertText'}));
+    };
+    window.__codexReasoningControls.setSkillPaths(['cot','cot-on','cot-off'].map(name=>({
+      name,path:'C:/viewer-fixture/'+name+'/SKILL.md',
+    })));
     editor.addEventListener('input',()=>{window.__fixtureEvents.draft=editor.innerText;});
     for(const name of['keydown','keyup','pointerdown','click'])window.addEventListener(name,()=>window.__fixtureEvents[name]++,{capture:true});
     editor.addEventListener('keydown',event=>{
@@ -116,9 +135,11 @@ try {
   const snapshot = () =>
     run(`({
     status:window.__codexReasoningViewer.status(),events:{...window.__fixtureEvents},
-    text:document.querySelector('[data-reasoning-viewer] pre').textContent,
+    text:window.__codexReasoningViewer.getElement().querySelector('pre').textContent,
     editor:document.querySelector('[data-codex-composer]').innerText.trim(),
-    showVisible:!document.querySelector('[data-reasoning-viewer-show]').hidden,
+    panelPresent:!!document.querySelector('[data-reasoning-viewer]'),
+    showPresent:!!document.querySelector('[data-reasoning-viewer-show]'),
+    visibleOwnedNodes:[...document.querySelectorAll('[data-reasoning-viewer],[data-reasoning-viewer-show],[data-reasoning-viewer-command-hint]')].filter(node=>node.getClientRects().length&&getComputedStyle(node).display!=='none').length,
     hint:document.querySelector('[data-reasoning-viewer-command-hint]')?.hidden===false,
   })`);
   const draft = async (text, options = {}) =>
@@ -147,7 +168,10 @@ try {
   const hidden = await enter();
   assert.equal(hidden.status.enabled, false);
   assert.equal(hidden.status.visible, false);
-  assert.equal(hidden.showVisible, true);
+  assert.equal(hidden.status.mounted, false);
+  assert.equal(hidden.panelPresent, false);
+  assert.equal(hidden.showPresent, false);
+  assert.equal(hidden.visibleOwnedNodes, 0);
   assert.equal(hidden.events.submits, 0);
   assert.equal(hidden.events.keydown, 0);
   assert.equal(hidden.events.keyup, 0);
@@ -241,13 +265,107 @@ try {
     'unrelated commands, multiline drafts, attachments, middle carets, modifiers and IME pass through',
   );
 
+  for (const [name, suffix, enabled] of [
+    ['cot-off', ' ', false],
+    ['cot-on', ' ', true],
+    ['cot', ' ', false],
+    ['cot', ' on', true],
+  ]) {
+    const before = await snapshot();
+    await run(
+      `window.__fixtureSetSkill(${JSON.stringify(name)},${JSON.stringify('C:/viewer-fixture/' + name + '/SKILL.md')},{suffix:${JSON.stringify(suffix)}})`,
+    );
+    const after = await enter();
+    assert.equal(after.status.enabled, enabled);
+    assert.equal(after.status.controls.executed, before.status.controls.executed + 1);
+    assert.equal(after.events.submits, before.events.submits);
+    assert.equal(after.editor, '');
+    if (!enabled) assert.equal(after.visibleOwnedNodes, 0);
+  }
+  for (const entry of [
+    { name: 'cot-off', path: 'C:/another-plugin/cot-off/SKILL.md' },
+    { name: 'unrelated', path: 'C:/viewer-fixture/cot-off/SKILL.md' },
+    {
+      name: 'cot-off',
+      path: 'C:/viewer-fixture/cot-off/SKILL.md',
+      options: { prefix: 'explain ' },
+    },
+    { name: 'cot-off', path: 'C:/viewer-fixture/cot-off/SKILL.md', options: { other: true } },
+    { name: 'cot-off', path: 'C:/viewer-fixture/cot-off/SKILL.md', options: { suffix: '\\n' } },
+  ]) {
+    const before = await snapshot();
+    const options = entry.options?.suffix === '\\n' ? { suffix: '\n' } : entry.options;
+    await run(
+      `window.__fixtureSetSkill(${JSON.stringify(entry.name)},${JSON.stringify(entry.path)},${JSON.stringify(options ?? {})})`,
+    );
+    const after = await enter();
+    assert.equal(after.status.controls.executed, before.status.controls.executed);
+    assert.equal(after.events.keydown, before.events.keydown + 1);
+  }
+  cases.push(
+    'only registered skill paths with a single control chip execute locally; unrelated chips and mixed drafts pass through',
+  );
+
+  await run(`(()=>{
+    window.__fixtureMenu=(name,foreign=false)=>{
+      document.querySelector('[cmdk-list]')?.remove();
+      const list=document.createElement('div'),option=document.createElement('div');
+      list.setAttribute('cmdk-list','');list.setAttribute('role','listbox');
+      list.setAttribute('aria-activedescendant','fixture-menu-option');
+      option.id='fixture-menu-option';option.setAttribute('cmdk-item','');
+      option.setAttribute('role','option');option.setAttribute('aria-selected','true');
+      option.setAttribute('data-selected','true');option.setAttribute('data-disabled','false');
+      option.textContent='An ambiguous title must not decide identity';
+      Object.defineProperty(option,'__reactFiber$fixture',{value:{
+        key:null,return:{key:'skill:C:/'+(foreign?'another-plugin':'viewer-fixture')+'/'+name+'/SKILL.md',return:null},
+      }});
+      list.append(option);document.body.append(list);
+    };
+  })()`);
+  await draft('/cot');
+  await run("window.__fixtureMenu('cot-off')");
+  const beforeMenu = await snapshot();
+  const selectedOff = await enter();
+  assert.equal(selectedOff.status.enabled, false);
+  assert.equal(selectedOff.status.controls.lastAction, 'hide');
+  assert.equal(selectedOff.events.submits, beforeMenu.events.submits);
+  await draft('/cot on');
+  assert.equal((await enter()).status.enabled, true);
+  await draft('/co');
+  await run("window.__fixtureMenu('cot-on')");
+  await run(`(()=>{
+    const option=document.querySelector('[cmdk-item]');
+    option.dispatchEvent(new PointerEvent('pointerdown',{button:0,bubbles:true,cancelable:true}));
+    option.dispatchEvent(new MouseEvent('click',{button:0,bubbles:true,cancelable:true}));
+  })()`);
+  await settle();
+  assert.equal((await snapshot()).status.enabled, true);
+  assert.equal((await snapshot()).events.submits, beforeMenu.events.submits);
+  await draft('/cot');
+  await run("window.__fixtureMenu('cot-off',true)");
+  const foreignMenuBefore = await snapshot();
+  const foreignMenuAfter = await enter();
+  assert.equal(
+    foreignMenuAfter.status.controls.executed,
+    foreignMenuBefore.status.controls.executed,
+  );
+  assert.equal(foreignMenuAfter.events.keydown, foreignMenuBefore.events.keydown + 1);
+  await run("document.querySelector('[cmdk-list]').remove()");
+  cases.push(
+    'native menu keyboard and pointer selection use registered React keys, respect the highlighted action, and leave foreign items alone',
+  );
+
   await draft('');
   await run(
     'window.__codexReasoningViewer.getElement().querySelector(\'button[title="/cot off"]\').click()',
   );
   await settle();
-  assert.equal((await snapshot()).showVisible, true);
-  await run("document.querySelector('[data-reasoning-viewer-show]').click()");
+  const headerHidden = await snapshot();
+  assert.equal(headerHidden.visibleOwnedNodes, 0);
+  assert.equal(headerHidden.panelPresent, false);
+  assert.equal(headerHidden.showPresent, false);
+  await draft('/cot on');
+  await enter();
   await settle();
   assert.equal((await snapshot()).status.enabled, true);
   await run(
@@ -255,7 +373,8 @@ try {
   );
   await settle();
   assert.equal((await snapshot()).status.enabled, false);
-  cases.push('header, compact show button and cross-window preference update control visibility');
+  assert.equal((await snapshot()).visibleOwnedNodes, 0);
+  cases.push('header and cross-window visibility fully remove UI; the local command reopens it');
 
   const cleanup = await run(`(()=>{
     window.__codexReasoningViewer.dispose();
@@ -265,6 +384,8 @@ try {
   assert.deepEqual(cleanup, { panel: false, controls: false, nodes: 0 });
   for (const source of sources) await run(source);
   assert.equal((await snapshot()).status.enabled, false);
+  assert.equal((await snapshot()).visibleOwnedNodes, 0);
+  assert.equal((await snapshot()).panelPresent, false);
   await draft('/cot on');
   const restored = await enter();
   assert.equal(restored.status.enabled, true);

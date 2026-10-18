@@ -1,10 +1,21 @@
 import { readFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
 import { CdpConnection } from './cdp.mjs';
 import { armManagerCapture } from './capture.mjs';
+import { readSkillBindings } from './skill-bindings.mjs';
 export async function attachViewer(target, sites) {
   const connection = await CdpConnection.connect(target.webSocketDebuggerUrl);
   let releaseCapture = null,
-    disposed = false;
+    disposed = false,
+    lastBindings = null;
+  const project = resolve(import.meta.dirname, '../..');
+  async function refreshBindings() {
+    const value = JSON.stringify(await readSkillBindings(project));
+    if (value !== lastBindings) {
+      await connection.evaluate(`window.__codexReasoningControls?.setSkillPaths?.(${value})`);
+      lastBindings = value;
+    }
+  }
   const [panelSource, resizeSource, controlsSource, adapterSource] = await Promise.all(
     ['panel.js', 'resize.js', 'controls.js', 'adapter.js'].map((name) =>
       readFile(new URL(name, import.meta.url), 'utf8'),
@@ -18,6 +29,8 @@ export async function attachViewer(target, sites) {
     await connection.evaluate(panelSource);
     await connection.evaluate(resizeSource);
     await connection.evaluate(controlsSource);
+    lastBindings = null;
+    await refreshBindings();
     await connection.evaluate(adapterSource);
     releaseCapture = await armManagerCapture(connection, sites);
   }
@@ -32,6 +45,7 @@ export async function attachViewer(target, sites) {
       await releaseCapture();
       releaseCapture = null;
     }
+    await refreshBindings();
     const panel = await connection.evaluate('window.__codexReasoningViewer?.status()??null');
     return { ...status, panel, captureArmed: releaseCapture !== null };
   }

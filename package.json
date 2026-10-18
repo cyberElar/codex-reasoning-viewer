@@ -1,6 +1,6 @@
 {
   "name": "codex-reasoning-viewer",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "description": "A local, in-memory reasoning panel for Codex Desktop on Windows.",
@@ -37,10 +37,17 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "validate:composer": "node scripts/validate-native-composer.mjs",
-    "validate:controls": "node scripts/validate-native-controls.mjs"
+    "validate:controls": "node scripts/validate-native-controls.mjs",
+    "control:mcp": "node src/control/server.mjs",
+    "plugin:build": "node scripts/integrate-plugin.mjs --build-only",
+    "plugin:install": "node scripts/integrate-plugin.mjs",
+    "plugin:remove": "node scripts/integrate-plugin.mjs --remove"
   },
   "devDependencies": {
     "acorn": "^8.19.0",
     "prettier": "3.9.10"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.1"
   }
 }

@@ -28,6 +28,10 @@ An attached running desktop continues normally and is activated on repeat launch
 No Windows sign-in task, registry launch hook, official shortcut rewrite, or
 installed file patch is used.
 
+The optional `npm.cmd run plugin:install` layer adds native skill-menu entries
+and MCP visibility tools. It does not replace the launcher or create an app-start
+hook. See [the control plugin guide](CONTROL-PLUGIN.md).
+
 ## Panel behavior
 
 - Auto chooses each item's nonempty summary, otherwise its raw content.
@@ -38,7 +42,8 @@ installed file patch is used.
 - Following scrolls to the end; scrolling up pauses it.
 - Drag the top grip to resize. Double-click resets it; arrow keys work when the
   grip is focused.
-- Hide keeps the helper and history active. The compact 思考 button reopens it.
+- Hide removes the entire panel from the DOM, with no button or placeholder.
+  The helper and history stay active. `/cot on` reopens it.
 - `/cot`, `/cot on`, and `/cot off` perform the same local visibility controls.
 
 Use commands as a single text block with the caret at its end. Shift/Alt+Enter,
@@ -57,7 +62,7 @@ Check `.local/native-launch/status.json` locally before sharing a redacted repor
 | State                                         | Meaning / next step                                       |
 | --------------------------------------------- | --------------------------------------------------------- |
 | `visible`                                     | A panel is mounted and visible                            |
-| `hidden-by-user`                              | Capture remains active; use `/cot on` or the small button |
+| `hidden-by-user`                              | Capture remains active; use `/cot on` to reopen           |
 | `attached`                                    | Connected; no visible reasoning panel yet                 |
 | `waiting-for-window`                          | Waiting for an eligible composer renderer                 |
 | `waiting-for-manager`                         | Waiting for a native manager method to execute            |
@@ -98,7 +103,8 @@ npm.cmd run validate:controls -- <verified-port>
 The composer fixture verifies empty/hidden portals, streaming, same-turn item
 retention, turn history, source modes, resizing, viewport clamping, and cleanup.
 The controls fixture verifies local command consumption, submit buttons, unrelated
-drafts, hidden history, preference restoration, and listener cleanup.
+drafts, hidden history, preference restoration, complete hiding, exact skill paths,
+native menu selection identity, and listener cleanup.
 They create isolated iframes and storage and remove their fixtures afterward.
 Reports go into `.local/native-runtime/`.
 

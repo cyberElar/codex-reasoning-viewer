@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import { CdpConnection, listTargets } from '../src/native/cdp.mjs';
 import { isComposerPage } from '../src/native/attach.mjs';
 import { findInstallation, verifyInstallation, powershell } from '../src/native/installation.mjs';
+import { readSkillBindings } from '../src/native/skill-bindings.mjs';
 
 const project = resolve(import.meta.dirname, '..');
 const state = JSON.parse(
@@ -24,6 +25,7 @@ const sources = await Promise.all(
     readFile(resolve(project, 'src/native', name), 'utf8'),
   ),
 );
+const skillBindings = await readSkillBindings(project);
 const pendingKey = '__codexReasoningViewerPendingUpdate',
   objectGroup = 'codex-reasoning-viewer-update';
 
@@ -96,6 +98,7 @@ for (const target of (await listTargets(port)).filter(isComposerPage)) {
       (()=>{
         const pending=window.${pendingKey},adapter=window.__codexReasoningNativeAdapter,panel=window.__codexReasoningViewer;
         if(adapter?.status().version!==3||panel?.version!==3)throw new Error('The updated viewer did not initialize');
+        window.__codexReasoningControls.setSkillPaths(${JSON.stringify(skillBindings)});
         for(const manager of pending.managers)if(!adapter.capture(manager))throw new Error('An existing manager could not be adopted');
         adapter.refresh();
         const root=panel.getElement(),mode=root.querySelector('[aria-label="\\u601d\\u8003\\u5185\\u5bb9"]'),body=root.querySelector('pre');

@@ -34,3 +34,11 @@ test('unrelated slash commands and multi-line prose remain ordinary composer inp
 test('invalid arguments to the reserved local command never become a model prompt', () => {
   for (const text of ['/cot invalid', '/cot on please']) assert.equal(command(text), 'invalid');
 });
+
+test('menu command spellings have the same local visibility semantics', () => {
+  assert.equal(command('/cot-on'), 'show');
+  assert.equal(command('/COT-OFF'), 'hide');
+  assert.equal(command('/cot-on extra'), 'invalid');
+  assert.equal(command('/cot-off\n'), null);
+  assert.equal(command('/cot-only'), null);
+});

@@ -194,9 +194,17 @@
     { signal },
   );
 
-  const observer = new ResizeObserver(updateHandle);
-  observer.observe(body);
+  const observer = new ResizeObserver(() => {
+    // A viewport can change without a window resize event (for example, an embedded page).
+    // Reapply the clamp so a saved height never overflows the available composer space.
+    applyHeight();
+  });
+  for (const target of [document.documentElement, document.body, panel.parentElement])
+    if (target) observer.observe(target);
+  window.visualViewport?.addEventListener('resize', applyHeight, { signal });
   function status() {
+    // Embedded composers may change viewport size without notifying the child document.
+    applyHeight();
     return {
       heightPx: measuredHeight(),
       preferredHeightPx: preferredHeight,

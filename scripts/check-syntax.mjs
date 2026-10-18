@@ -5,7 +5,7 @@ import { promisify } from 'node:util';
 
 const execute = promisify(execFile),
   project = resolve(import.meta.dirname, '..');
-const directories = ['src/native', 'scripts', 'test'];
+const directories = ['src/native', 'src/control', 'scripts', 'test'];
 const files = (
   await Promise.all(
     directories.map(async (directory) =>

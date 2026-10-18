@@ -15,8 +15,9 @@ npm.cmd test
 npm.cmd run format:check
 ```
 
-Use `npm.cmd run format` after editing. Runtime modules use Node built-ins and
-browser APIs; Acorn and Prettier are development dependencies.
+Use `npm.cmd run format` after editing. The native runtime uses Node built-ins and
+browser APIs; the optional control server uses the official MCP SDK. Acorn and
+Prettier are development dependencies.
 
 The unit tests operate on synthetic fixtures and do not require Codex. The
 renderer regressions require an already verified desktop debug endpoint:
@@ -43,6 +44,9 @@ a real user conversation for a test fixture.
 | `src/native/panel.js`                       | Source modes, history navigation, scroll state, visibility |
 | `src/native/resize.js`                      | Height preference and pointer/keyboard resizing            |
 | `src/native/controls.js`                    | Exact local command matching and submit interception       |
+| `src/control/`                              | Optional MCP server and fixed visibility operations        |
+| `plugin/`                                   | Control skill templates and plugin identity                |
+| `scripts/integrate-plugin.mjs`              | Generate/install/remove the machine-local plugin package   |
 | `scripts/integrate-startup.mjs`             | User shortcut installation/removal                         |
 | `scripts/update-native-viewer.mjs`          | Replace an existing in-memory viewer                       |
 | `test/` and `src/native/fixture-server.mjs` | Synthetic verification                                     |
@@ -57,7 +61,8 @@ Changing only the version allowlist is insufficient. Before adding support:
    editor behavior, and lifecycle for that build.
 3. Update the capture sites and the fingerprint profile together.
 4. Validate summary/raw streams, source selection, multiple items per turn,
-   history navigation, resizing, local commands, and cleanup with synthetic data.
+   history navigation, resizing, local commands, native skill/menu identity,
+   and cleanup with synthetic data.
 5. Confirm that unknown or changed assets still disable the companion while
    allowing ordinary Codex startup.
 

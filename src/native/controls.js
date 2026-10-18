@@ -8,6 +8,9 @@
     signal = controller.signal;
   const originalStatus = api.status,
     originalDispose = api.dispose;
+  const skillActions = { cot: 'toggle', 'cot-on': 'show', 'cot-off': 'hide' };
+  const skillPaths = new Map();
+  const normalizedPath = (value) => value.replaceAll('\\', '/').toLowerCase();
   let executed = 0,
     lastAction = null,
     lastError = null,
@@ -24,6 +27,9 @@
   function parseCommand(value) {
     if (/[\r\n]/.test(value)) return null;
     const text = value.trim();
+    const alias = text.match(/^\/cot-(on|off)(?:[ \t]+(.*))?$/i);
+    if (alias)
+      return alias[2]?.trim() ? 'invalid' : alias[1].toLowerCase() === 'on' ? 'show' : 'hide';
     if (!/^\/cot(?:[ \t]|$)/i.test(text)) return null;
     const argument = text.slice(4).trim().toLowerCase();
     if (argument === '' || argument === 'toggle') return 'toggle';
@@ -55,10 +61,92 @@
     tail.setStart(selection.focusNode, selection.focusOffset);
     return tail.toString() === '';
   }
-  function match(editor) {
-    if (!editor || !atEnd(editor)) return null;
+  function skillCommand(editor) {
+    const doc = editor.pmViewDesc?.node;
+    if (doc?.childCount !== 1 || !doc.firstChild?.isTextblock) return null;
+    let skill = null,
+      suffix = '';
+    for (let index = 0; index < doc.firstChild.childCount; index++) {
+      const node = doc.firstChild.child(index);
+      if (node.isText) {
+        const text = node.text ?? node.textContent ?? '';
+        if (/[\r\n]/.test(text)) return null;
+        if (skill) suffix += text;
+        else if (text.trim()) return null;
+      } else if (
+        !skill &&
+        node.type?.name === 'skillMention' &&
+        typeof node.attrs?.path === 'string'
+      ) {
+        const binding = skillPaths.get(normalizedPath(node.attrs.path));
+        if (!binding || binding.name !== node.attrs.name) return null;
+        skill = binding;
+      } else return null;
+    }
+    if (!skill) return null;
+    if (skill.name === 'cot') return parseCommand('/cot ' + suffix);
+    return suffix.trim() ? null : skill.action;
+  }
+  function commandInEditor(editor) {
+    if (!editor) return null;
+    const skill = skillCommand(editor);
+    if (skill !== null) return skill;
     const text = textOnly(editor);
     return text === null ? null : parseCommand(text);
+  }
+  function bindingForOption(option) {
+    if (
+      !option?.matches?.('[cmdk-item][role="option"]') ||
+      option.getAttribute('data-disabled') === 'true'
+    )
+      return null;
+    const key = Object.getOwnPropertyNames(option).find((name) => name.startsWith('__reactFiber$'));
+    let fiber = key ? option[key] : null;
+    // Native option IDs are generated; the bounded React key retains the actual skill path.
+    for (let depth = 0; fiber && depth < 32; depth++, fiber = fiber.return) {
+      if (typeof fiber.key !== 'string' || !fiber.key.startsWith('skill:')) continue;
+      const binding = skillPaths.get(normalizedPath(fiber.key.slice(6)));
+      if (binding) return binding;
+    }
+    return null;
+  }
+  function menuQuery(editor) {
+    if (!editor || !atEnd(editor)) return false;
+    const value = textOnly(editor);
+    if (value === null || /[\r\n]/.test(value)) return false;
+    const query = value.trim().toLowerCase();
+    return (
+      query.startsWith('/') &&
+      ['/cot', '/cot on', '/cot off', '/cot-on', '/cot-off', '/cot show', '/cot hide'].some(
+        (command) => command.startsWith(query),
+      )
+    );
+  }
+  function activeMenu() {
+    return [...document.querySelectorAll('[cmdk-list][role="listbox"]')].find(
+      (list) => list.getClientRects().length && getComputedStyle(list).visibility !== 'hidden',
+    );
+  }
+  function menuSelection(list) {
+    const id = list?.getAttribute('aria-activedescendant');
+    const active = id ? document.getElementById(id) : null;
+    return active && list.contains(active)
+      ? active
+      : list?.querySelector('[cmdk-item][aria-selected="true"],[cmdk-item][data-selected="true"]');
+  }
+  function menuControl(target) {
+    const option = target?.closest?.('[cmdk-item][role="option"]');
+    if (!option?.closest('[cmdk-list][role="listbox"]')) return null;
+    const binding = bindingForOption(option);
+    const editor = api
+      .composerTarget()
+      ?.closest('[data-codex-composer-root]')
+      ?.querySelector('[data-codex-composer][contenteditable="true"]');
+    return binding && menuQuery(editor) ? { editor, action: binding.action } : null;
+  }
+  function match(editor) {
+    if (!editor || !atEnd(editor)) return null;
+    return commandInEditor(editor);
   }
   function showHint(text) {
     const target = api.composerTarget();
@@ -68,11 +156,11 @@
     hint.hidden = false;
   }
   function refreshHint(event) {
-    const editor = editorFor(event?.target) ?? editorFor(document.activeElement),
-      text = editor ? textOnly(editor) : null;
-    const action = text === null ? null : parseCommand(text);
+    const editor = editorFor(event?.target) ?? editorFor(document.activeElement);
+    const action = commandInEditor(editor);
     if (action === null) {
       hint.hidden = true;
+      hint.remove();
       return;
     }
     const label =
@@ -122,7 +210,7 @@
     } catch (error) {
       lastError = String(error?.message ?? error).slice(0, 160);
       showHint(
-        '\u672c\u5730\u6307\u4ee4\u672a\u6267\u884c\uff0c\u53ef\u4f7f\u7528\u601d\u8003\u680f\u6309\u94ae',
+        '\u672c\u5730\u6307\u4ee4\u672a\u6267\u884c\uff0c\u8bf7\u91cd\u8bd5 /cot on \u6216\u68c0\u67e5\u540e\u53f0\u72b6\u6001',
       );
     }
     return true;
@@ -159,6 +247,29 @@
         return;
       const editor = editorFor(event.target),
         action = match(editor);
+      const plain = editor ? textOnly(editor) : null;
+      if (action !== null && plain && /^\/cot(?:-(?:on|off)|[ \t]+\S)/i.test(plain.trim())) {
+        consumedEnter = true;
+        consume(event, editor, action);
+        return;
+      }
+      if (menuQuery(editor)) {
+        const menu = activeMenu(),
+          option = menuSelection(menu),
+          binding = bindingForOption(option);
+        if (binding) {
+          consumedEnter = true;
+          consume(event, editor, binding.action);
+          return;
+        }
+        if (option) return;
+        if (menu && action !== null) {
+          consumedEnter = true;
+          block(event);
+          showHint(usage);
+          return;
+        }
+      }
       if (action === null) return;
       consumedEnter = true;
       consume(event, editor, action);
@@ -180,6 +291,10 @@
     'pointerdown',
     (event) => {
       if (event.button !== 0) return;
+      if (menuControl(event.target)) {
+        block(event);
+        return;
+      }
       const button = sendButton(event.target),
         editor = editorForButton(button);
       if (button && match(editor) !== null) block(event);
@@ -189,6 +304,11 @@
   window.addEventListener(
     'click',
     (event) => {
+      const menu = menuControl(event.target);
+      if (menu) {
+        consume(event, menu.editor, menu.action);
+        return;
+      }
       const button = sendButton(event.target),
         editor = editorForButton(button),
         action = match(editor);
@@ -206,8 +326,24 @@
     { capture: true, signal },
   );
   window.addEventListener('input', refreshHint, { capture: true, signal });
+  window.addEventListener(
+    'codex-reasoning-viewer:visibility',
+    (event) => {
+      if (event.detail?.enabled === false) {
+        hint.hidden = true;
+        hint.remove();
+      }
+    },
+    { signal },
+  );
   document.addEventListener('selectionchange', refreshHint, { signal });
-  const status = () => ({ version: 1, executed, lastAction, lastError });
+  const status = () => ({
+    version: 2,
+    executed,
+    lastAction,
+    lastError,
+    skillBindings: skillPaths.size,
+  });
   const wrappedStatus = () => ({ ...originalStatus(), controls: status() });
   function dispose() {
     if (disposed) return;
@@ -223,7 +359,18 @@
     dispose();
     return Reflect.apply(originalDispose, this, args);
   }
-  window[key] = { status, dispose };
+  function setSkillPaths(bindings) {
+    skillPaths.clear();
+    for (const binding of Array.isArray(bindings) ? bindings : []) {
+      if (typeof binding?.path !== 'string' || !Object.hasOwn(skillActions, binding.name)) continue;
+      skillPaths.set(normalizedPath(binding.path), {
+        name: binding.name,
+        action: skillActions[binding.name],
+      });
+    }
+    return skillPaths.size;
+  }
+  window[key] = { status, dispose, setSkillPaths };
   api.status = wrappedStatus;
   api.dispose = wrappedDispose;
   return status();
