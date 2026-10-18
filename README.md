@@ -20,8 +20,9 @@ It does not modify the ASAR, replace the application directory, or alter model s
 - **Turn history:** keep multiple reasoning items together within a turn, browse
   earlier turns, and return to the latest without losing already observed items.
 - **Resizable panel:** drag the top grip; double-click to reset its height.
-- **Minimal English header:** an accent-colored indicator, `Thinking…`, and
-  `‹ n/m turns ›` navigation. The indicator follows the Codex accent by default.
+- **Minimal English header:** an accent-colored indicator, `Thinking` / `Done`,
+  and `‹ n/m turns ›` navigation. Status follows the current turn even while you
+  browse history. The indicator follows the Codex accent by default.
 - **MCP settings:** choose the display source, scroll following, collapsed state,
   height, and indicator color through tools or startup environment configuration.
 - **Local controls:** `/cot`, `/cot on`, and `/cot off`.

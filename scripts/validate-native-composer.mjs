@@ -108,10 +108,18 @@ try {
     run(`({
     adapter:window.__codexReasoningNativeAdapter.status(),
     panel:window.__codexReasoningViewer.status(),
+    header:{
+      title:document.querySelector('[data-reasoning-viewer-part="title"]').textContent,
+      running:document.querySelector('[data-reasoning-viewer-part="dot"]').hasAttribute('data-running'),
+    },
     target:window.__codexReasoningViewer.composerTarget()?.getAttribute('data-above-composer-conversation-id')??null,
     text:document.querySelector('[data-reasoning-viewer] pre').textContent,
     parentThread:document.querySelector('[data-reasoning-viewer]').parentElement.getAttribute('data-above-composer-conversation-id')
   })`);
+  const assertStatus = (value, running) => {
+    assert.deepEqual(value.header, { title: running ? 'Thinking' : 'Done', running });
+    assert.equal(value.panel.isRunning, running);
+  };
   const samples = [];
   await pause();
   const first = await snapshot();
@@ -120,6 +128,7 @@ try {
   assert.equal(first.adapter.selectedThreadId, 'fixture-first');
   assert.equal(first.panel.visible, true);
   assert.equal(first.text, 'RAW_INITIAL');
+  assertStatus(first, false);
 
   await run(
     `window.__composerFixtureManager.onNotification('item/reasoning/textDelta',{threadId:'fixture-first',turnId:'turn-first',itemId:'item-first',contentIndex:0,delta:' RAW_DELTA'})`,
@@ -129,6 +138,7 @@ try {
   samples.push({ step: 'streamed-delta', ...streamed });
   assert.equal(streamed.text, 'RAW_INITIAL RAW_DELTA');
   assert.equal(streamed.adapter.nativeNotifications, 1);
+  assertStatus(streamed, true);
 
   const historyCases = [];
   await run(`window.__composerFixtureManager.onNotification('item/reasoning/textDelta',{threadId:'fixture-first',turnId:'turn-first',itemId:'item-first-b',contentIndex:0,delta:'SECOND_RAW_THOUGHT'});
@@ -161,20 +171,49 @@ try {
   assert.equal(newTurn.panel.turnCount, 2);
   assert.equal(newTurn.panel.turnId, 'turn-next');
   assert.equal(newTurn.text, 'NEXT_TURN');
+  assertStatus(newTurn, true);
   await run(`window.__codexReasoningViewer.setTurn('turn-first')`);
   await pause();
   const selectedHistory = await snapshot();
   assert.equal(selectedHistory.text, combinedRaw.text);
   assert.equal(selectedHistory.panel.followingLatestTurn, false);
+  assertStatus(selectedHistory, true);
   await run(`window.__composerFixtureManager.onNotification('item/reasoning/textDelta',{threadId:'fixture-first',turnId:'turn-next',itemId:'item-next',contentIndex:0,delta:' EXTRA'});
-    window.__composerFixtureManager.onNotification('turn/completed',{threadId:'fixture-first',turn:{id:'turn-next'}});
-    window.__composerFixtureManager.onNotification('turn/started',{threadId:'fixture-first',turn:{id:'turn-third'}});
-    window.__composerFixtureManager.onNotification('item/reasoning/textDelta',{threadId:'fixture-first',turnId:'turn-third',itemId:'item-third',contentIndex:0,delta:'THIRD_TURN'})`);
+    window.__composerFixtureManager.onNotification('turn/completed',{threadId:'fixture-first',turn:{id:'turn-next'}})`);
+  await pause();
+  const completedWhileBrowsing = await snapshot();
+  assert.equal(completedWhileBrowsing.panel.turnId, 'turn-first');
+  assert.equal(completedWhileBrowsing.panel.followingLatestTurn, false);
+  assert.equal(completedWhileBrowsing.text, combinedRaw.text);
+  assertStatus(completedWhileBrowsing, false);
+  historyCases.push({
+    step: 'current-turn-completion-updates-status-while-history-stays-selected',
+    header: completedWhileBrowsing.header,
+    selectedTurn: completedWhileBrowsing.panel.turnId,
+  });
+  await run(
+    `window.__composerFixtureManager.onNotification('turn/started',{threadId:'fixture-first',turn:{id:'turn-third'}})`,
+  );
+  await pause();
+  const startedWhileBrowsing = await snapshot();
+  assert.equal(startedWhileBrowsing.panel.turnId, 'turn-first');
+  assert.equal(startedWhileBrowsing.panel.followingLatestTurn, false);
+  assert.equal(startedWhileBrowsing.text, combinedRaw.text);
+  assertStatus(startedWhileBrowsing, true);
+  historyCases.push({
+    step: 'current-turn-start-updates-status-before-reasoning-arrives-while-browsing-history',
+    header: startedWhileBrowsing.header,
+    selectedTurn: startedWhileBrowsing.panel.turnId,
+  });
+  await run(
+    `window.__composerFixtureManager.onNotification('item/reasoning/textDelta',{threadId:'fixture-first',turnId:'turn-third',itemId:'item-third',contentIndex:0,delta:'THIRD_TURN'})`,
+  );
   await pause();
   const pinned = await snapshot();
   assert.equal(pinned.panel.turnCount, 3);
   assert.equal(pinned.panel.turnId, 'turn-first');
   assert.equal(pinned.text, combinedRaw.text);
+  assertStatus(pinned, true);
   historyCases.push({
     step: 'new-turn-and-new-deltas-do-not-replace-selected-history',
     turnCount: pinned.panel.turnCount,
@@ -197,6 +236,7 @@ try {
   const latestTurn = await snapshot();
   assert.equal(latestTurn.panel.followingLatestTurn, true);
   assert.equal(latestTurn.text, 'THIRD_TURN');
+  assertStatus(latestTurn, true);
   await run(`document.querySelector('[data-reasoning-viewer-previous-turn]').click()`);
   await pause();
   assert.equal((await snapshot()).text, 'NEXT_TURN EXTRA');
@@ -240,6 +280,7 @@ try {
   assert.equal(second.adapter.selectedThreadId, 'fixture-second');
   assert.equal(second.panel.visible, true);
   assert.equal(second.text, 'FULL_SUMMARY');
+  assertStatus(second, false);
 
   const resizeSamples = [];
   const resizeStatus = () => run('window.__codexReasoningViewer.status()');
@@ -337,6 +378,7 @@ try {
   assert.equal(home.panel.visible, false);
   assert.equal(home.panel.rawChars, 0);
   assert.equal(home.panel.summaryChars, 0);
+  assertStatus(home, false);
 
   const report = {
     observedAt: new Date().toISOString(),

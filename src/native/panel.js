@@ -88,7 +88,7 @@
   dot.setAttribute('aria-hidden', 'true');
   const title = document.createElement('strong');
   title.dataset.reasoningViewerPart = 'title';
-  title.textContent = 'Thinking\u2026';
+  title.textContent = 'Done';
   function button(text, label) {
     const node = document.createElement('button');
     node.type = 'button';
@@ -179,7 +179,8 @@
     if (!enabled) return;
     mount();
     const state = current ? session() : { turns: [], followingLatest: true },
-      turn = activeTurn();
+      turn = activeTurn(),
+      running = state.turns.at(-1)?.isRunning === true;
     panel.hidden = !current || !state.turns.length;
     const empty =
       mode === 'summary'
@@ -197,7 +198,9 @@
         body.firstChild.appendData(text.slice(oldText.length));
       else body.textContent = text;
     }
-    dot.toggleAttribute('data-running', turn?.isRunning === true);
+    // History navigation changes the body; the header keeps the current turn's status.
+    title.textContent = running ? 'Thinking' : 'Done';
+    dot.toggleAttribute('data-running', running);
     syncNavigation(state, turn);
     if (resetScroll) {
       body.scrollTop = 0;
@@ -469,7 +472,7 @@
         mode,
         follow,
         collapsed: body.hidden,
-        isRunning: turn?.isRunning === true,
+        isRunning: state?.turns.at(-1)?.isRunning === true,
         threadId: current,
         turnId: turn?.turnId ?? null,
         itemId: items.at(-1)?.itemId ?? null,

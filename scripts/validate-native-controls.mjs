@@ -215,7 +215,7 @@ try {
     };
   })()`);
   assert.deepEqual(minimalHeader, {
-    title: 'Thinking\u2026',
+    title: 'Done',
     buttons: 2,
     selectors: 1,
     previous: true,
@@ -225,7 +225,7 @@ try {
     navigation: false,
   });
   cases.push(
-    'the English header contains only the indicator, Thinking label and arrow turn navigation',
+    'the English header contains only the indicator, status label and arrow turn navigation',
   );
   await draft('/cot off');
   assert.equal((await snapshot()).hint, true);

@@ -84,7 +84,8 @@ server does not stop the independent native helper.
 
 ## Settings and startup configuration
 
-The toolbar contains only an indicator, `Thinking…`, and `‹ n/m turns ›`.
+The toolbar contains only an indicator, `Thinking` / `Done`, and `‹ n/m turns ›`.
+The indicator and label follow the current turn even when you browse history.
 Settings are managed by MCP, not by controls in that toolbar.
 
 | Field            | Values                                                         | Default |

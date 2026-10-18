@@ -37,8 +37,9 @@ hook. See [the control plugin guide](CONTROL-PLUGIN.md).
 - Auto chooses each item's nonempty summary, otherwise its raw content.
 - Summary and Raw are explicit choices through `viewer_configure`; a missing
   source has an English empty state.
-- The header contains only an accent indicator, Thinking label, and
-  `‹ n/m turns ›`. The arrows and selector browse history.
+- The header contains only an accent indicator, `Thinking` / `Done` label, and
+  `‹ n/m turns ›`. The arrows and selector browse history; the label and indicator
+  keep following the current turn's running state.
 - The indicator follows the Codex accent unless overridden through MCP settings.
 - Multiple reasoning items within a turn are joined in order.
 - Turn navigation retains your selected historical turn while new text arrives.

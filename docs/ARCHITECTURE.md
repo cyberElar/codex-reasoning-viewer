@@ -98,9 +98,11 @@ startup. A short connection to the verified desktop endpoint applies them throug
 the fixed panel configuration API. Reasoning deltas never flow through MCP.
 See [control plugin details](CONTROL-PLUGIN.md) for lifecycle and installation.
 
-The English header contains only a theme-accent indicator, `Thinking…`, and
-`‹ n/m turns ›` navigation. The automatic indicator uses a CSS variable reference
-so changing the Codex accent updates it without polling.
+The English header contains only a theme-accent indicator, `Thinking` / `Done`,
+and `‹ n/m turns ›` navigation. The label, indicator, and status API's `isRunning`
+follow the current session's latest turn, independently of the selected history
+turn. The automatic indicator uses a CSS variable reference so changing the Codex
+accent updates it without polling.
 
 Hot updates retain the adapter's full session cache inside the renderer before
 replacing its listener wrappers. Importing that cache preserves live-only items

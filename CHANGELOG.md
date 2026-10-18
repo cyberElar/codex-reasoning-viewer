@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.1 - 2026-10-18
+
+- Show Thinking while the current turn runs and Done when it finishes.
+- Keep the header label and indicator tied to the current turn while browsing
+  historical reasoning, without changing the selected turn or text.
+- Verify status transitions on turn start and completion, including before the
+  first reasoning delta and while historical reasoning remains selected.
+
 ## 0.3.0 - 2026-10-18
 
 - Simplify the English header to an accent indicator, Thinking label, and
