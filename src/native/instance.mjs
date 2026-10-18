@@ -35,7 +35,11 @@ export async function requestActivation(path) {
       if (!data.includes('\n')) return;
       try {
         const response = JSON.parse(data.slice(0, data.indexOf('\n')));
-        if (response.protocol !== protocol || response.version !== version || response.ok !== true)
+        if (
+          response.protocol !== protocol ||
+          response.version !== version ||
+          (response.ok !== true && !(response.ok === false && response.reason === 'not-ready'))
+        )
           throw new Error('The viewer activation service rejected the request');
         finish(null, response);
       } catch (error) {
@@ -62,7 +66,8 @@ export async function claimInstance(project, onActivate) {
       }
       if (!data.includes('\n')) return;
       handled = true;
-      let ok = false;
+      let ok = false,
+        reason;
       try {
         const request = JSON.parse(data.slice(0, data.indexOf('\n')));
         if (
@@ -70,11 +75,11 @@ export async function claimInstance(project, onActivate) {
           request.version === version &&
           request.command === 'activate'
         ) {
-          await onActivate();
-          ok = true;
+          ok = (await onActivate()) !== false;
+          if (!ok) reason = 'not-ready';
         }
       } catch {}
-      socket.end(JSON.stringify({ protocol, version, ok }) + '\n');
+      socket.end(JSON.stringify({ protocol, version, ok, ...(reason ? { reason } : {}) }) + '\n');
     });
   });
   try {

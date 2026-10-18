@@ -59,52 +59,46 @@ async function run(installation, setReady) {
     installation.applicationId,
     desktopDebugArguments(debugPort),
   );
+  async function disableViewer(status, reason) {
+    const alive = isDesktopProcessRunning(pid);
+    await save({
+      status: alive ? status : 'startup-exited',
+      version: guard.version,
+      pid,
+      port: debugPort,
+      reason,
+    });
+    console.log(
+      alive
+        ? 'Codex started; viewer disabled. See .local/native-launch/status.json for the reason.'
+        : 'Codex exited before the reasoning viewer became ready.',
+    );
+    if (!alive) process.exitCode = 1;
+  }
   let identity;
   try {
     identity = await inspectPackageIdentity(pid);
   } catch (error) {
-    await save({
-      status: 'package-identity-not-verified',
-      version: guard.version,
-      pid,
-      reason: errorMessage(error),
-    });
-    console.log('Viewer disabled because the activated process identity could not be inspected.');
+    await disableViewer('package-identity-not-verified', errorMessage(error));
     return;
   }
   if (!identity.packaged || identity.packageFullName !== installation.packageFullName) {
-    await save({ status: 'package-identity-not-verified', version: guard.version, pid });
-    console.log(
-      'Codex started; viewer disabled because its package identity could not be verified.',
+    await disableViewer(
+      'package-identity-not-verified',
+      'The activated process does not belong to the expected Windows package.',
     );
     return;
   }
   try {
     if (!(await waitForDesktopEndpoint(pid, debugPort))) {
-      const alive = isDesktopProcessRunning(pid);
-      await save({
-        status: alive ? 'capture-unavailable' : 'startup-exited',
-        version: guard.version,
-        pid,
-        port: debugPort,
-      });
-      console.log(
-        alive
-          ? 'Codex started; native viewer could not obtain its temporary endpoint.'
-          : 'Codex exited before its viewer endpoint became available.',
+      await disableViewer(
+        'capture-unavailable',
+        'No owned loopback listener appeared before the startup timeout.',
       );
-      if (!alive) process.exitCode = 1;
       return;
     }
   } catch (error) {
-    await save({
-      status: 'endpoint-not-verified',
-      version: guard.version,
-      pid,
-      port: debugPort,
-      reason: errorMessage(error),
-    });
-    console.log('Codex started; viewer disabled because its endpoint could not be verified.');
+    await disableViewer('endpoint-not-verified', errorMessage(error));
     return;
   }
   const endpoint = { port: debugPort };
@@ -229,19 +223,23 @@ async function main() {
   const installation = await findInstallation();
   let activePid = null;
   const instance = await claimInstance(project, async () => {
-    if (activePid && isDesktopProcessRunning(activePid)) await activate(installation);
+    if (!activePid || !isDesktopProcessRunning(activePid)) return false;
+    await activate(installation);
+    return true;
   });
   if (!instance) return;
   try {
     await run(installation, (pid) => {
       activePid = pid;
     });
+  } catch (error) {
+    await save({ status: 'error', message: error.message }).catch(() => {});
+    throw error;
   } finally {
     await instance.close();
   }
 }
-main().catch(async (error) => {
+main().catch((error) => {
   console.error(error.message);
-  await save({ status: 'error', message: error.message }).catch(() => {});
   process.exitCode = 1;
 });

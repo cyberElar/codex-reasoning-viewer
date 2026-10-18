@@ -52,6 +52,29 @@ test('a package activation slower than two seconds receives its response', async
     await primary.close();
   }
 });
+test('a starting or closing helper reports not-ready without claiming activation', async () => {
+  const project = 'viewer-instance-' + randomUUID();
+  let ready = false,
+    activations = 0;
+  const primary = await claimInstance(project, () => {
+    if (!ready) return false;
+    activations++;
+    return true;
+  });
+  try {
+    const waiting = await requestActivation(primary.path);
+    assert.equal(waiting.ok, false);
+    assert.equal(waiting.reason, 'not-ready');
+    assert.equal(activations, 0);
+    ready = true;
+    const active = await requestActivation(primary.path);
+    assert.equal(active.ok, true);
+    assert.equal(active.reason, undefined);
+    assert.equal(activations, 1);
+  } finally {
+    await primary.close();
+  }
+});
 test('the activation channel cannot execute an arbitrary command', async () => {
   const project = 'viewer-instance-' + randomUUID();
   let activations = 0;
