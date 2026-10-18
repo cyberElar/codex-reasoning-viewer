@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.1 - 2026-10-18
+
+- Apply a highlighted viewer control immediately on Tab, Enter, or click.
+- Recognize the desktop's native suggestion rows and highlighted selection,
+  in addition to cmdk menus.
+- Clear any control skill chip inserted by an earlier native keyboard listener
+  during the same key press, without another Enter or a model submission.
+- Preserve normal Tab navigation for unrelated drafts, modifiers, and IME.
+- Add an isolated Edge regression runner with real browser keyboard input.
+
 ## 0.2.0 - 2026-10-18
 
 - Fully hide the panel without a reopen button, border, or layout space.

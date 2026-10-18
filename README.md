@@ -102,7 +102,8 @@ composer; the companion follows the active visible conversation.
 | Drag top grip / double-click grip | Resize / reset the panel                         |
 
 Enter a local command alone on one line, with the caret at its end, then press
-Enter or click Send/Queue. The local handler consumes it before model submission.
+Tab or Enter. The local handler applies it immediately and clears the command,
+without creating a chat message or starting a model turn.
 The base launcher handles typed commands; the optional plugin adds native skill-menu entries.
 `show`, `hide`, and `toggle` are accepted aliases. Invalid `/cot` arguments stay in
 the composer with a usage hint.
@@ -128,9 +129,11 @@ This installs a local plugin through the official Codex CLI. It provides the
 The MCP tools return only minimal control state, never reasoning text.
 
 In the supported desktop, the attached local handler identifies this plugin's
-exact skill paths and handles keyboard/menu selection without a model turn.
-If the native menu first inserts a skill chip, press Enter to run the local
-control. Other skill chips and mixed prose/attachments retain native behavior.
+exact skill paths. Highlight `cot`, `cot-on`, or `cot-off`, then press Tab or
+Enter, or click the entry: the control takes effect on that selection.
+If a native keyboard listener inserts a skill chip first, the local handler
+clears and executes it during the same key press. Other skill chips and mixed
+prose/attachments retain native behavior.
 In a client without that attached handler, using the skill follows the ordinary
 model/tool workflow instead.
 

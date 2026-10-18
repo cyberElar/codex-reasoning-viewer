@@ -22,3 +22,4 @@ jobs:
       - run: npm.cmd run check
       - run: npm.cmd run format:check
       - run: npm.cmd test
+      - run: npm.cmd run validate:controls:isolated

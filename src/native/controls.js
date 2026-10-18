@@ -11,10 +11,12 @@
   const skillActions = { cot: 'toggle', 'cot-on': 'show', 'cot-off': 'hide' };
   const skillPaths = new Map();
   const normalizedPath = (value) => value.replaceAll('\\', '/').toLowerCase();
+  const optionSelector = '[data-list-navigation-item="true"],[cmdk-item][role="option"]',
+    menuSelector = '[data-mention-list-scroll-area],[cmdk-list][role="listbox"]';
+  const consumedKeys = new Set();
   let executed = 0,
     lastAction = null,
     lastError = null,
-    consumedEnter = false,
     disposed = false;
   const hint = document.createElement('div');
   hint.dataset.reasoningViewerCommandHint = '';
@@ -96,13 +98,13 @@
   }
   function bindingForOption(option) {
     if (
-      !option?.matches?.('[cmdk-item][role="option"]') ||
-      option.getAttribute('data-disabled') === 'true'
+      !option?.matches?.(optionSelector) ||
+      option.matches(':disabled,[aria-disabled="true"],[data-disabled="true"]')
     )
       return null;
     const key = Object.getOwnPropertyNames(option).find((name) => name.startsWith('__reactFiber$'));
     let fiber = key ? option[key] : null;
-    // Native option IDs are generated; the bounded React key retains the actual skill path.
+    // Both native suggestion rows and cmdk items retain the skill path in a React key.
     for (let depth = 0; fiber && depth < 32; depth++, fiber = fiber.return) {
       if (typeof fiber.key !== 'string' || !fiber.key.startsWith('skill:')) continue;
       const binding = skillPaths.get(normalizedPath(fiber.key.slice(6)));
@@ -114,17 +116,15 @@
     if (!editor || !atEnd(editor)) return false;
     const value = textOnly(editor);
     if (value === null || /[\r\n]/.test(value)) return false;
-    const query = value.trim().toLowerCase();
-    return (
-      query.startsWith('/') &&
-      ['/cot', '/cot on', '/cot off', '/cot-on', '/cot-off', '/cot show', '/cot hide'].some(
-        (command) => command.startsWith(query),
-      )
-    );
+    // The selected item's verified path decides the action, including fuzzy or empty queries.
+    return /^\/[^\s/]*$/.test(value.trim());
   }
   function activeMenu() {
-    return [...document.querySelectorAll('[cmdk-list][role="listbox"]')].find(
-      (list) => list.getClientRects().length && getComputedStyle(list).visibility !== 'hidden',
+    return [...document.querySelectorAll(menuSelector)].find(
+      (list) =>
+        list.getClientRects().length &&
+        !list.closest('[inert]') &&
+        getComputedStyle(list).visibility !== 'hidden',
     );
   }
   function menuSelection(list) {
@@ -132,11 +132,15 @@
     const active = id ? document.getElementById(id) : null;
     return active && list.contains(active)
       ? active
-      : list?.querySelector('[cmdk-item][aria-selected="true"],[cmdk-item][data-selected="true"]');
+      : list?.querySelector(
+          '[data-list-navigation-item="true"][aria-current="true"],' +
+            '[data-list-navigation-item="true"][aria-selected="true"],' +
+            '[cmdk-item][aria-selected="true"],[cmdk-item][data-selected="true"]',
+        );
   }
   function menuControl(target) {
-    const option = target?.closest?.('[cmdk-item][role="option"]');
-    if (!option?.closest('[cmdk-list][role="listbox"]')) return null;
+    const option = target?.closest?.(optionSelector);
+    if (!option?.closest(menuSelector)) return null;
     const binding = bindingForOption(option);
     const editor = api
       .composerTarget()
@@ -174,7 +178,7 @@
     showHint(
       action === 'invalid'
         ? usage
-        : 'Enter\uff1a' + label + '\u601d\u8003\u680f \u00b7 \u672c\u5730\u6307\u4ee4',
+        : 'Tab / Enter\uff1a' + label + '\u601d\u8003\u680f \u00b7 \u7acb\u5373\u751f\u6548',
     );
   }
   function clearEditor(editor) {
@@ -207,6 +211,7 @@
       lastAction = action;
       lastError = null;
       hint.hidden = true;
+      hint.remove();
     } catch (error) {
       lastError = String(error?.message ?? error).slice(0, 160);
       showHint(
@@ -238,18 +243,24 @@
     'keydown',
     (event) => {
       if (
-        event.key !== 'Enter' ||
+        !['Enter', 'Tab'].includes(event.key) ||
         event.shiftKey ||
         event.altKey ||
+        (event.key === 'Tab' && (event.ctrlKey || event.metaKey)) ||
         event.isComposing ||
         event.keyCode === 229
       )
         return;
+      if (event.repeat && consumedKeys.has(event.key)) {
+        block(event);
+        return;
+      }
       const editor = editorFor(event.target),
         action = match(editor);
       const plain = editor ? textOnly(editor) : null;
-      if (action !== null && plain && /^\/cot(?:-(?:on|off)|[ \t]+\S)/i.test(plain.trim())) {
-        consumedEnter = true;
+      if (action !== null && plain && /^\/cot[ \t]+\S/i.test(plain.trim())) {
+        if (event.key === 'Tab' && action === 'invalid') return;
+        consumedKeys.add(event.key);
         consume(event, editor, action);
         return;
       }
@@ -258,20 +269,16 @@
           option = menuSelection(menu),
           binding = bindingForOption(option);
         if (binding) {
-          consumedEnter = true;
+          consumedKeys.add(event.key);
           consume(event, editor, binding.action);
           return;
         }
-        if (option) return;
-        if (menu && action !== null) {
-          consumedEnter = true;
-          block(event);
-          showHint(usage);
-          return;
-        }
+        // Never replace an unrelated or unknown native selection with a text-based guess.
+        if (menu) return;
       }
       if (action === null) return;
-      consumedEnter = true;
+      if (event.key === 'Tab' && action === 'invalid') return;
+      consumedKeys.add(event.key);
       consume(event, editor, action);
     },
     { capture: true, signal },
@@ -279,10 +286,7 @@
   window.addEventListener(
     'keyup',
     (event) => {
-      if (event.key === 'Enter' && consumedEnter) {
-        consumedEnter = false;
-        block(event);
-      }
+      if (consumedKeys.delete(event.key)) block(event);
     },
     { capture: true, signal },
   );
@@ -326,6 +330,7 @@
     { capture: true, signal },
   );
   window.addEventListener('input', refreshHint, { capture: true, signal });
+  window.addEventListener('blur', () => consumedKeys.clear(), { signal });
   window.addEventListener(
     'codex-reasoning-viewer:visibility',
     (event) => {
@@ -338,7 +343,7 @@
   );
   document.addEventListener('selectionchange', refreshHint, { signal });
   const status = () => ({
-    version: 2,
+    version: 3,
     executed,
     lastAction,
     lastError,

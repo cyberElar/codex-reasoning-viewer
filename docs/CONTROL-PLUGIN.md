@@ -30,14 +30,19 @@ and machine-specific skill bindings are configured together.
 The plugin provides `cot`, `cot-on`, and `cot-off` skills. The supported desktop
 lists available plugin skills in its native slash menu.
 
-With the viewer attached, keyboard and pointer handling can consume an entry
-locally before it becomes a model request. Native option titles are not unique;
+With the viewer attached, highlight an entry and press Tab or Enter, or click
+the entry. It applies immediately, clears the control text, and keeps focus in
+the composer, without creating a chat message or starting a model turn.
+The handler recognizes native suggestion rows as well as cmdk lists.
+Native option titles are not unique;
 the handler reads the option's version-bound React key and matches its exact
 registered skill path. It respects the selected entry, rather than guessing
 from its title.
 
-If native selection inserts a `skillMention` first, Enter also handles a single
-registered control chip with whitespace or a valid `cot` argument. Foreign
+If an earlier native keyboard listener inserts a `skillMention` first, the
+handler executes and clears the registered control chip during the same Tab or
+Enter key press. A single registered chip with whitespace or a valid `cot`
+argument also works when already present in the composer. Foreign
 skills, multiple chips, prose, attachments, multiline content, and IME composition
 retain their normal behavior.
 

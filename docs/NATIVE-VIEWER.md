@@ -108,6 +108,19 @@ native menu selection identity, and listener cleanup.
 They create isolated iframes and storage and remove their fixtures afterward.
 Reports go into `.local/native-runtime/`.
 
+To run the controls regression without attaching to a desktop, use:
+
+```powershell
+npm.cmd run validate:controls:isolated
+```
+
+This starts a hidden Edge instance with a new temporary profile, exercises the
+same fixture, and closes only that owned browser. Native suggestion rows, ARIA
+listboxes, and cmdk menus receive real Tab and Enter key input through CDP.
+The regression checks that selection applies once, clears the command, retains
+editor focus, and never reaches the fixture's submit handler. It also covers an
+earlier native listener inserting a control skill chip during the same key press.
+
 The current implementation has also been checked with local fixed-text provider
 streams in an isolated desktop profile. That development evidence is not bundled:
 the public repository excludes real session diagnostics, extracted application

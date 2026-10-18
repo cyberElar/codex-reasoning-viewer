@@ -84,8 +84,10 @@ handling.
 An optional plugin registers three skills, rather than attempting to register
 MCP prompts as native slash actions. The local handler accepts only exact paths
 registered by the installer. It can identify a selected native option from its
-read-only React key and consume the choice locally; if native selection inserts a
-`skillMention` chip first, that same exact-path check applies on Enter.
+read-only React key, using `aria-current` or `aria-selected` to respect the
+highlighted native suggestion row. Tab, Enter, and clicking apply the control
+immediately. If an earlier native keyboard listener inserts a `skillMention`
+chip first, that same exact-path check executes it during the same key press.
 Other paths, attachments, and mixed text remain native drafts.
 
 The separate MCP server provides only four fixed visibility tools. It opens a

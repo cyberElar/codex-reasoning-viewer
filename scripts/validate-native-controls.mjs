@@ -5,7 +5,8 @@ import { CdpConnection, listTargets } from '../src/native/cdp.mjs';
 import { isComposerPage } from '../src/native/attach.mjs';
 
 const project = resolve(import.meta.dirname, '..'),
-  port = Number(process.argv[2]);
+  port = Number(process.argv[2]),
+  isolatedBrowser = process.argv.includes('--isolated-browser');
 if (!Number.isInteger(port) || port < 1 || port > 65535)
   throw new Error('Pass the verified desktop loopback port');
 const sources = await Promise.all(
@@ -13,8 +14,12 @@ const sources = await Promise.all(
     readFile(resolve(project, 'src/native', name), 'utf8'),
   ),
 );
-const target = (await listTargets(port)).find(isComposerPage);
-if (!target) throw new Error('Codex main page is unavailable');
+const target = (await listTargets(port)).find(
+  isolatedBrowser
+    ? (target) => target.type === 'page' && target.url === 'about:blank'
+    : isComposerPage,
+);
+if (!target) throw new Error('The selected regression page is unavailable');
 const connection = await CdpConnection.connect(target.webSocketDebuggerUrl),
   contexts = new Map();
 const fixtureKey = '__codexReasoningControlsRegression',
@@ -65,6 +70,17 @@ try {
       getItem:key=>values.get(key)??null,setItem:(key,value)=>values.set(key,String(value)),removeItem:key=>values.delete(key),
     }});
     window.__fixtureStorage=values;
+    // Native menu listeners can register before the injected controls on the same window.
+    window.addEventListener('keydown',event=>{
+      if(!window.__fixtureNativeFirst||!['Enter','Tab'].includes(event.key))return;
+      const option=document.querySelector('[data-list-navigation-item="true"][aria-current="true"]');
+      if(!option)return;
+      const skill=option.__fixtureSkill;
+      window.__fixtureNativeSelections=(window.__fixtureNativeSelections??0)+1;
+      window.__fixtureSetSkill(skill.name,skill.path);
+      option.closest('[data-mention-list-scroll-area]').remove();
+      event.preventDefault();event.stopPropagation();
+    },{capture:true});
   })()`);
   for (const source of sources) await run(source);
   await run(`(()=>{
@@ -107,7 +123,10 @@ try {
     window.__codexReasoningControls.setSkillPaths(['cot','cot-on','cot-off'].map(name=>({
       name,path:'C:/viewer-fixture/'+name+'/SKILL.md',
     })));
-    editor.addEventListener('input',()=>{window.__fixtureEvents.draft=editor.innerText;});
+    editor.addEventListener('input',()=>{
+      window.__fixtureEvents.draft=editor.innerText;
+      if(!editor.innerText.trim())document.querySelector('[data-fixture-menu]')?.remove();
+    });
     for(const name of['keydown','keyup','pointerdown','click'])window.addEventListener(name,()=>window.__fixtureEvents[name]++,{capture:true});
     editor.addEventListener('keydown',event=>{
       if(event.key==='Enter'&&!event.shiftKey&&!event.altKey&&!event.isComposing){
@@ -141,15 +160,34 @@ try {
     showPresent:!!document.querySelector('[data-reasoning-viewer-show]'),
     visibleOwnedNodes:[...document.querySelectorAll('[data-reasoning-viewer],[data-reasoning-viewer-show],[data-reasoning-viewer-command-hint]')].filter(node=>node.getClientRects().length&&getComputedStyle(node).display!=='none').length,
     hint:document.querySelector('[data-reasoning-viewer-command-hint]')?.hidden===false,
+    menuPresent:!!document.querySelector('[data-fixture-menu]'),
+    skillChips:document.querySelectorAll('[skill-mention-path]').length,
+    nativeSelections:window.__fixtureNativeSelections??0,
+    editorFocused:document.activeElement===document.querySelector('[data-codex-composer]'),
   })`);
   const draft = async (text, options = {}) =>
     run(`window.__fixtureSetDraft(${JSON.stringify(text)},${JSON.stringify(options)})`);
-  const enter = async (options = {}) => {
+  const press = async (key, options = {}) => {
     await run(`(()=>{
       const editor=document.querySelector('[data-codex-composer]'),options=${JSON.stringify(options)};
-      editor.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true,...options}));
-      editor.dispatchEvent(new KeyboardEvent('keyup',{key:'Enter',bubbles:true,cancelable:true,...options}));
+      editor.dispatchEvent(new KeyboardEvent('keydown',{key:${JSON.stringify(key)},bubbles:true,cancelable:true,...options}));
+      editor.dispatchEvent(new KeyboardEvent('keyup',{key:${JSON.stringify(key)},bubbles:true,cancelable:true,...options}));
     })()`);
+    await settle();
+    return snapshot();
+  };
+  const enter = (options) => press('Enter', options),
+    tab = (options) => press('Tab', options);
+  const pressBrowserKey = async (key) => {
+    const code = key === 'Tab' ? 9 : 13;
+    for (const type of ['keyDown', 'keyUp'])
+      await connection.send('Input.dispatchKeyEvent', {
+        type,
+        key,
+        code: key,
+        windowsVirtualKeyCode: code,
+        nativeVirtualKeyCode: code,
+      });
     await settle();
     return snapshot();
   };
@@ -306,18 +344,70 @@ try {
     'only registered skill paths with a single control chip execute locally; unrelated chips and mixed drafts pass through',
   );
 
+  for (const [command, enabled] of [
+    ['/cot off', false],
+    ['/cot-on', true],
+    ['/cot', false],
+    ['/cot on', true],
+  ]) {
+    const before = await snapshot();
+    await draft(command);
+    const after = await tab();
+    assert.equal(after.status.enabled, enabled);
+    assert.equal(after.status.controls.executed, before.status.controls.executed + 1);
+    assert.equal(after.events.submits, before.events.submits);
+    assert.equal(after.events.keydown, before.events.keydown);
+    assert.equal(after.events.keyup, before.events.keyup);
+    assert.equal(after.editor, '');
+  }
+  for (const entry of [
+    { text: '/review' },
+    { text: '/cot invalid' },
+    { text: '/cot off', draft: { caret: 'middle' } },
+    { text: '/cot off', draft: { atom: true } },
+    { text: '/cot off', draft: { blocks: true } },
+    ...['shiftKey', 'altKey', 'ctrlKey', 'metaKey', 'isComposing'].map((key) => ({
+      text: '/cot off',
+      key: { [key]: true },
+    })),
+    { text: '/cot off', key: { keyCode: 229 } },
+  ]) {
+    const before = await snapshot();
+    await draft(entry.text, entry.draft);
+    const after = await tab(entry.key);
+    assert.equal(after.events.keydown, before.events.keydown + 1);
+    assert.equal(after.status.controls.executed, before.status.controls.executed);
+  }
+  cases.push(
+    'Tab applies local controls immediately without submission and preserves normal navigation, modifiers, drafts and IME',
+  );
+
   await run(`(()=>{
-    window.__fixtureMenu=(name,foreign=false)=>{
-      document.querySelector('[cmdk-list]')?.remove();
+    window.__fixtureMenu=(name,foreign=false,{kind='native',selected=true,disabled=false}={})=>{
+      document.querySelector('[data-fixture-menu]')?.remove();
       const list=document.createElement('div'),option=document.createElement('div');
-      list.setAttribute('cmdk-list','');list.setAttribute('role','listbox');
-      list.setAttribute('aria-activedescendant','fixture-menu-option');
-      option.id='fixture-menu-option';option.setAttribute('cmdk-item','');
-      option.setAttribute('role','option');option.setAttribute('aria-selected','true');
-      option.setAttribute('data-selected','true');option.setAttribute('data-disabled','false');
+      list.dataset.fixtureMenu='';
+      option.id='fixture-menu-option';
+      if(kind==='cmdk'){
+        list.setAttribute('cmdk-list','');list.setAttribute('role','listbox');
+        if(selected)list.setAttribute('aria-activedescendant',option.id);
+        option.setAttribute('cmdk-item','');option.setAttribute('role','option');
+        option.setAttribute('aria-selected',String(selected));option.setAttribute('data-selected',String(selected));
+        option.setAttribute('data-disabled',String(disabled));
+      }else{
+        list.setAttribute('data-mention-list-scroll-area','');
+        option.setAttribute('data-list-navigation-item','true');
+        if(kind==='listbox'){
+          list.setAttribute('role','listbox');option.setAttribute('role','option');
+          option.setAttribute('aria-selected',String(selected));
+        }else if(selected)option.setAttribute('aria-current','true');
+        if(disabled)option.setAttribute('aria-disabled','true');
+      }
       option.textContent='An ambiguous title must not decide identity';
+      const path='C:/'+(foreign?'another-plugin':'viewer-fixture')+'/'+name+'/SKILL.md';
+      option.__fixtureSkill={name,path};
       Object.defineProperty(option,'__reactFiber$fixture',{value:{
-        key:null,return:{key:'skill:C:/'+(foreign?'another-plugin':'viewer-fixture')+'/'+name+'/SKILL.md',return:null},
+        key:null,return:{key:'skill:'+path,return:null},
       }});
       list.append(option);document.body.append(list);
     };
@@ -334,25 +424,74 @@ try {
   await draft('/co');
   await run("window.__fixtureMenu('cot-on')");
   await run(`(()=>{
-    const option=document.querySelector('[cmdk-item]');
+    const option=document.querySelector('[data-list-navigation-item="true"]');
     option.dispatchEvent(new PointerEvent('pointerdown',{button:0,bubbles:true,cancelable:true}));
     option.dispatchEvent(new MouseEvent('click',{button:0,bubbles:true,cancelable:true}));
   })()`);
   await settle();
   assert.equal((await snapshot()).status.enabled, true);
   assert.equal((await snapshot()).events.submits, beforeMenu.events.submits);
-  await draft('/cot');
-  await run("window.__fixtureMenu('cot-off',true)");
-  const foreignMenuBefore = await snapshot();
-  const foreignMenuAfter = await enter();
-  assert.equal(
-    foreignMenuAfter.status.controls.executed,
-    foreignMenuBefore.status.controls.executed,
-  );
-  assert.equal(foreignMenuAfter.events.keydown, foreignMenuBefore.events.keydown + 1);
-  await run("document.querySelector('[cmdk-list]').remove()");
+  for (const kind of ['native', 'listbox', 'cmdk']) {
+    for (const key of ['Tab', 'Enter']) {
+      await draft(key === 'Tab' ? '/' : '/viewer');
+      await run(`window.__fixtureMenu('cot-off',false,{kind:${JSON.stringify(kind)}})`);
+      const before = await snapshot();
+      const after = await (isolatedBrowser ? pressBrowserKey(key) : press(key));
+      assert.equal(after.status.enabled, false, kind + '/' + key);
+      assert.equal(after.status.controls.lastAction, 'hide');
+      assert.equal(after.status.controls.executed, before.status.controls.executed + 1);
+      assert.equal(after.events.submits, before.events.submits);
+      assert.equal(after.editor, '');
+      assert.equal(after.skillChips, 0);
+      assert.equal(after.menuPresent, false);
+      assert.equal(after.editorFocused, true);
+    }
+  }
+  for (const key of ['Tab', 'Enter']) {
+    for (const options of [{ foreign: true }, { selected: false }, { disabled: true }]) {
+      await draft('/cot');
+      await run(
+        `window.__fixtureMenu('cot-off',${options.foreign === true},${JSON.stringify(options)})`,
+      );
+      const before = await snapshot();
+      const after = await press(key);
+      assert.equal(after.status.controls.executed, before.status.controls.executed);
+      assert.equal(after.events.keydown, before.events.keydown + 1);
+    }
+  }
+  await run("document.querySelector('[data-fixture-menu]').remove()");
   cases.push(
-    'native menu keyboard and pointer selection use registered React keys, respect the highlighted action, and leave foreign items alone',
+    'native suggestion rows, ARIA listboxes and cmdk menus apply the highlighted control on Tab, Enter or click; foreign, disabled and unknown selections pass through',
+  );
+
+  for (const key of ['Enter', 'Tab']) {
+    await draft('/co');
+    await run("window.__fixtureMenu('cot-on');window.__fixtureNativeFirst=true");
+    const before = await snapshot();
+    const after = await (isolatedBrowser ? pressBrowserKey(key) : press(key));
+    assert.equal(after.nativeSelections, before.nativeSelections + 1);
+    assert.equal(after.status.enabled, true);
+    assert.equal(after.status.controls.executed, before.status.controls.executed + 1);
+    assert.equal(after.events.submits, before.events.submits);
+    assert.equal(after.editor, '');
+    assert.equal(after.skillChips, 0);
+    assert.equal(after.menuPresent, false);
+    assert.equal(after.editorFocused, true);
+    await run('window.__fixtureNativeFirst=false');
+  }
+  await draft('/cot');
+  const beforeRepeat = await snapshot();
+  await run(`(()=>{
+    const editor=document.querySelector('[data-codex-composer]');
+    for(const repeat of[false,true,true])editor.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',repeat,bubbles:true,cancelable:true}));
+    editor.dispatchEvent(new KeyboardEvent('keyup',{key:'Enter',bubbles:true,cancelable:true}));
+  })()`);
+  await settle();
+  const afterRepeat = await snapshot();
+  assert.equal(afterRepeat.status.controls.executed, beforeRepeat.status.controls.executed + 1);
+  assert.equal(afterRepeat.events.submits, beforeRepeat.events.submits);
+  cases.push(
+    'native-first keyboard handlers still execute a single local action and clear inserted skill chips; held keys never submit',
   );
 
   await draft('');
@@ -397,7 +536,10 @@ try {
   const report = {
     observedAt: new Date().toISOString(),
     passed: true,
-    kind: 'owned iframe; isolated storage and fake submit handlers; no model requests',
+    kind:
+      'owned iframe in ' +
+      (isolatedBrowser ? 'an isolated browser' : 'the desktop renderer') +
+      '; isolated storage and fake submit handlers; no model requests',
     cases,
     cleanup,
   };
