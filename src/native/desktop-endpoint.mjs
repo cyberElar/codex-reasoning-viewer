@@ -4,7 +4,14 @@ import { isDesktopProcessRunning } from './desktop-process.mjs';
 
 async function loopbackOwners(port) {
   const output = await powershell(
-    `Get-NetTCPConnection -LocalAddress 127.0.0.1 -State Listen -LocalPort ${port} -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique`,
+    `$owners = @()
+try {
+  $owners = @(Get-NetTCPConnection -LocalAddress 127.0.0.1 -State Listen -LocalPort ${port} -ErrorAction Stop | Select-Object -ExpandProperty OwningProcess -Unique)
+} catch {
+  # An empty query is the only expected ObjectNotFound; every other failure must propagate.
+  if ($_.CategoryInfo.Category -ne 'ObjectNotFound' -or $_.FullyQualifiedErrorId -ne 'CmdletizationQuery_NotFound,Get-NetTCPConnection') { throw }
+}
+$owners`,
   );
   return output.split(/\s+/).filter(Boolean).map(Number);
 }
