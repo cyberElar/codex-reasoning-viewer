@@ -4,7 +4,8 @@ import { homedir } from 'node:os';
 import { resolve } from 'node:path';
 
 const protocol = 'codex-reasoning-viewer',
-  version = 1;
+  version = 1,
+  activationTimeoutMs = 10000;
 export function instancePipe(project) {
   const identity = homedir().toLowerCase() + '\0' + resolve(project).toLowerCase();
   return (
@@ -23,7 +24,7 @@ export async function requestActivation(path) {
       socket.destroy();
       error ? reject(error) : resolve(value);
     };
-    socket.setTimeout(2000, () => finish(new Error('Viewer activation timed out')));
+    socket.setTimeout(activationTimeoutMs, () => finish(new Error('Viewer activation timed out')));
     socket.on('error', (error) => finish(error));
     socket.on('connect', () =>
       socket.write(JSON.stringify({ protocol, version, command: 'activate' }) + '\n'),
@@ -49,7 +50,7 @@ export async function claimInstance(project, onActivate) {
   const server = createServer((socket) => {
     let data = '',
       handled = false;
-    socket.setTimeout(2000, () => socket.destroy());
+    socket.setTimeout(activationTimeoutMs, () => socket.destroy());
     socket.on('error', () => {});
     socket.on('data', async (chunk) => {
       if (handled) return;

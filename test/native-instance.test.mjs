@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { createConnection } from 'node:net';
+import { setTimeout as pause } from 'node:timers/promises';
 import { claimInstance, instancePipe, requestActivation } from '../src/native/instance.mjs';
 
 test('a repeated launch signals one existing helper instead of starting a second helper', async () => {
@@ -34,6 +35,21 @@ test('closing the helper releases its activation channel', async () => {
     assert.ok(second);
   } finally {
     await second.close();
+  }
+});
+test('a package activation slower than two seconds receives its response', async () => {
+  const project = 'viewer-instance-' + randomUUID();
+  let completed = false;
+  const primary = await claimInstance(project, async () => {
+    await pause(2200);
+    completed = true;
+  });
+  try {
+    const response = await requestActivation(primary.path);
+    assert.equal(completed, true);
+    assert.equal(response.ok, true);
+  } finally {
+    await primary.close();
   }
 });
 test('the activation channel cannot execute an arbitrary command', async () => {

@@ -164,7 +164,9 @@ To remove only the optional controls: `npm.cmd run plugin:remove`.
 ## How it works
 
 The Node launcher discovers the installed package dynamically, verifies the build,
-and starts the official executable with a temporary, random **loopback CDP port**.
+and activates its registered Windows application with a temporary, random
+**loopback CDP port**. It preserves package identity and passes an explicit
+nonzero port so the ordinary window does not acquire Chromium's automation state.
 Short-lived conditional probes capture existing conversation managers without
 pausing the renderer. The probes are then removed.
 

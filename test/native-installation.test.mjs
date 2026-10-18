@@ -4,7 +4,42 @@ import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
-import { verifyInstallation, readAsarMembers } from '../src/native/installation.mjs';
+import {
+  findInstallation,
+  verifyInstallation,
+  readAsarMembers,
+} from '../src/native/installation.mjs';
+
+test('installation discovery retains registered activation identity alongside asset paths', async () => {
+  const metadata = {
+    directory: 'C:\\Program Files\\WindowsApps\\OpenAI.Codex_test',
+    applicationId: 'OpenAI.Codex_test!App',
+    packageFullName: 'OpenAI.Codex_test_x64__publisher',
+  };
+  assert.deepEqual(await findInstallation(async () => JSON.stringify(metadata)), {
+    ...metadata,
+    executable: join(metadata.directory, 'app', 'ChatGPT.exe'),
+    asar: join(metadata.directory, 'app', 'resources', 'app.asar'),
+  });
+});
+
+test('installation discovery rejects missing packages and incomplete activation metadata', async () => {
+  await assert.rejects(
+    findInstallation(async () => ''),
+    /package was not found/,
+  );
+  for (const metadata of [
+    {},
+    { directory: 'relative', applicationId: 'package!App', packageFullName: 'package' },
+    { directory: 'C:\\App', applicationId: 'package', packageFullName: 'package' },
+    { directory: 'C:\\App', applicationId: 'package!App' },
+  ])
+    await assert.rejects(
+      findInstallation(async () => JSON.stringify(metadata)),
+      /activation metadata is invalid/,
+    );
+});
+
 async function fixture(members, callback) {
   const root = await mkdtemp(join(tmpdir(), 'native-viewer-guard-'));
   const tree = { files: {} },

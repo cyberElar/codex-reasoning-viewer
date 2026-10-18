@@ -2,7 +2,7 @@ import { open, readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { join } from 'node:path';
+import { isAbsolute, join } from 'node:path';
 const execute = promisify(execFile);
 export async function powershell(script) {
   const { stdout } = await execute(
@@ -12,15 +12,38 @@ export async function powershell(script) {
   );
   return stdout.trim().replace(/^\uFEFF/, '');
 }
-export async function findInstallation() {
-  const path = await powershell(
-    'Get-AppxPackage -Name OpenAI.Codex | Sort-Object Version -Descending | Select-Object -First 1 -ExpandProperty InstallLocation',
-  );
-  if (!path) throw new Error('The installed OpenAI.Codex package was not found.');
+export async function findInstallation(run = powershell) {
+  const output = await run(`
+    $package=Get-AppxPackage -Name OpenAI.Codex | Sort-Object Version -Descending | Select-Object -First 1;
+    if($package){
+      $manifest=Get-AppxPackageManifest -Package $package.PackageFullName -ErrorAction Stop;
+      $application=@($manifest.Package.Applications.Application) | Where-Object {
+        ([string]$_.Executable).Replace('\\','/') -eq 'app/ChatGPT.exe'
+      } | Select-Object -First 1;
+      if(!$application){throw 'The registered Codex application entry was not found'};
+      [pscustomobject]@{
+        directory=$package.InstallLocation;
+        applicationId=$package.PackageFamilyName+'!'+$application.Id;
+        packageFullName=$package.PackageFullName
+      } | ConvertTo-Json -Compress
+    }`);
+  if (!output) throw new Error('The installed OpenAI.Codex package was not found.');
+  const metadata = JSON.parse(output);
+  if (
+    typeof metadata?.directory !== 'string' ||
+    !isAbsolute(metadata.directory) ||
+    typeof metadata.applicationId !== 'string' ||
+    !metadata.applicationId.includes('!') ||
+    typeof metadata.packageFullName !== 'string' ||
+    !metadata.packageFullName
+  )
+    throw new Error('The installed Codex activation metadata is invalid.');
   return {
-    directory: path,
-    executable: join(path, 'app', 'ChatGPT.exe'),
-    asar: join(path, 'app', 'resources', 'app.asar'),
+    directory: metadata.directory,
+    applicationId: metadata.applicationId,
+    packageFullName: metadata.packageFullName,
+    executable: join(metadata.directory, 'app', 'ChatGPT.exe'),
+    asar: join(metadata.directory, 'app', 'resources', 'app.asar'),
   };
 }
 export async function readAsarMembers(path, names) {
