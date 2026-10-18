@@ -1,6 +1,7 @@
 import { mkdir, readFile, rename, stat, unlink, writeFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { dirname, resolve } from 'node:path';
+import { setTimeout as wait } from 'node:timers/promises';
 
 export const DEFAULT_SETTINGS = Object.freeze({
   mode: 'auto',
@@ -113,7 +114,16 @@ export function createSettingsStore(project) {
         await writeFile(temporary, JSON.stringify({ version: 1, settings }, null, 2) + '\n', {
           mode: 0o600,
         });
-        await rename(temporary, path);
+        // Windows readers and scanners can briefly deny replacement; keep the write atomic.
+        for (let attempt = 0; ; attempt++) {
+          try {
+            await rename(temporary, path);
+            break;
+          } catch (error) {
+            if (attempt >= 7 || !['EPERM', 'EACCES', 'EBUSY'].includes(error.code)) throw error;
+            await wait(Math.min(10 * 2 ** attempt, 200));
+          }
+        }
       } finally {
         await unlink(temporary).catch((error) => {
           if (error.code !== 'ENOENT') throw error;
