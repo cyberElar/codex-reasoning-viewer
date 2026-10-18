@@ -73,7 +73,7 @@ function toolDefinitions() {
     {
       name: 'viewer_configure',
       description:
-        'Save and apply display mode, scroll following, collapsed state, body height, or indicator color. Indicator color auto follows the Codex accent; hex overrides it. A null height restores automatic sizing.',
+        'Save and apply display mode, scroll following, collapsed state, body height, or indicator color. Heights below 28 pixels use a single-line compact layout. Indicator color auto follows the Codex accent; hex overrides it. A null height restores automatic sizing.',
       inputSchema: SETTINGS_SCHEMA,
     },
   ];

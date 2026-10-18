@@ -1,7 +1,8 @@
 (() => {
   const api = window.__codexReasoningViewer;
   if (!api) throw new Error('Reasoning panel is not loaded');
-  if (api.resize?.version === 1) return api.status();
+  if (api.resize?.version === 2) return api.status();
+  api.resize?.dispose();
   const panel =
     api.getElement?.() ??
     document.querySelector('[data-reasoning-viewer="codex-reasoning-viewer-v1"]');
@@ -9,7 +10,8 @@
   if (!body) throw new Error('Reasoning panel body is unavailable');
 
   const storageKey = 'codex-reasoning-viewer:body-height:v1';
-  const minimum = 64,
+  const minimum = 18,
+    normalMinimum = 28,
     defaultHeight = 200;
   const controller = new AbortController(),
     signal = controller.signal;
@@ -26,7 +28,8 @@
   try {
     const saved = window.localStorage.getItem(storageKey),
       value = Number(saved);
-    if (saved !== null && Number.isFinite(value) && value >= minimum) preferredHeight = value;
+    if (saved !== null && Number.isFinite(value) && value >= minimum)
+      preferredHeight = value < normalMinimum ? minimum : value;
   } catch {}
 
   const handle = document.createElement('div');
@@ -36,20 +39,33 @@
   handle.setAttribute('aria-orientation', 'horizontal');
   handle.setAttribute('aria-label', 'Resize reasoning panel');
   handle.title = 'Drag to resize; double-click to reset';
-  handle.style.cssText =
-    'display:flex;align-items:center;justify-content:center;height:8px;cursor:ns-resize;touch-action:none;user-select:none;outline-offset:-2px;';
-  const grip = document.createElement('span');
-  grip.style.cssText =
-    'width:34px;height:2px;border-radius:2px;background:currentColor;opacity:.35;pointer-events:none;';
-  handle.append(grip);
+  // Invisible edge: panel.js overlays it on the panel's top, so it reserves no layout row.
+  handle.style.cssText = 'height:6px;cursor:ns-resize;touch-action:none;user-select:none;';
   panel.prepend(handle);
+  // Pressing the edge focuses it for arrow keys, which Chromium reports as :focus-visible.
+  // Like a native focus ring, panel.js shows its accent line only after keyboard input;
+  // modifier shortcuts such as Alt+Tab do not count.
+  handle.addEventListener(
+    'pointerdown',
+    () => handle.toggleAttribute('data-reasoning-viewer-pointer', true),
+    { signal },
+  );
+  window.addEventListener(
+    'keydown',
+    (event) => {
+      if (!event.altKey && !event.ctrlKey && !event.metaKey)
+        handle.removeAttribute('data-reasoning-viewer-pointer');
+    },
+    { capture: true, signal },
+  );
 
   function maximum() {
     const viewport = window.innerHeight || 600;
     return Math.max(minimum, Math.min(Math.floor(viewport * 0.75), viewport - 180));
   }
   function clamp(value) {
-    return Math.max(minimum, Math.min(maximum(), Math.round(value)));
+    const height = Math.max(minimum, Math.min(maximum(), Math.round(value)));
+    return height < normalMinimum ? minimum : height;
   }
   function measuredHeight() {
     return Math.round(body.getBoundingClientRect().height);
@@ -68,8 +84,10 @@
   function applyHeight() {
     if (disposed) return;
     const follow = originalStatus().follow;
-    const height =
-      preferredHeight === null ? Math.min(defaultHeight, maximum()) : clamp(preferredHeight);
+    const height = clamp(preferredHeight ?? defaultHeight);
+    const compact = height < normalMinimum && !body.hidden;
+    panel.toggleAttribute('data-reasoning-viewer-compact', compact);
+    panel.toggleAttribute('data-reasoning-viewer-dense', !compact && height < 64);
     body.style.boxSizing = 'border-box';
     body.style.maxHeight = height + 'px';
     body.style.height = preferredHeight === null ? '' : height + 'px';
@@ -101,6 +119,7 @@
     drag = null;
     if (revert) {
       preferredHeight = previous.preferredHeight;
+      body.hidden = previous.collapsed;
       applyHeight();
     }
     for (const [name, value, priority] of previous.rootStyles) {
@@ -127,6 +146,7 @@
       if (event.button !== 0 || event.isPrimary === false || drag) return;
       event.preventDefault();
       event.stopPropagation();
+      const collapsed = body.hidden;
       expand();
       const rootStyle = document.documentElement.style;
       drag = {
@@ -134,6 +154,7 @@
         y: event.clientY,
         height: measuredHeight() || clamp(preferredHeight ?? defaultHeight),
         preferredHeight,
+        collapsed,
         rootStyles: ['cursor', 'user-select'].map((name) => [
           name,
           rootStyle.getPropertyValue(name),
@@ -209,6 +230,7 @@
       preferredHeightPx: preferredHeight,
       minimumPx: minimum,
       maximumPx: maximum(),
+      compact: panel.hasAttribute('data-reasoning-viewer-compact'),
       dragging: drag !== null,
     };
   }
@@ -220,6 +242,8 @@
     controller.abort();
     observer.disconnect();
     handle.remove();
+    panel.removeAttribute('data-reasoning-viewer-compact');
+    panel.removeAttribute('data-reasoning-viewer-dense');
     for (const [name, value, priority] of originalStyles)
       restoreProperty(body.style, name, value, priority);
     if (api.status === wrappedStatus) api.status = originalStatus;
@@ -231,7 +255,7 @@
     dispose();
     return Reflect.apply(originalDispose, this, args);
   }
-  const controls = { version: 1, setHeight, resetHeight, status, dispose };
+  const controls = { version: 2, setHeight, resetHeight, refresh: applyHeight, status, dispose };
   api.resize = controls;
   api.status = wrappedStatus;
   api.dispose = wrappedDispose;

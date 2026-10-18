@@ -74,6 +74,13 @@ up pauses following. A frame scheduler with a timer fallback supports hidden
 windows with suspended animation frames.
 
 `resize.js` owns its handle, cursor cleanup, and height preference.
+The handle overlays the top edge without a visible grip or a separate layout row.
+The reasoning body can shrink to 28 pixels beneath its header. Smaller requested
+heights snap to an 18-pixel single-line body, with the indicator beside it and the
+title and navigation hidden through CSS. The same text node and history selection
+remain in place, so streaming and scrolling continue. Expanding, resetting, or
+canceling a drag restores the appropriate layout. The existing saved height key
+and body-height semantics are preserved.
 `controls.js` consumes exact single-line local commands at window capture phase,
 before the native editor's submission path. It verifies the editor contains a
 single text block and the caret is at the end, then clears it using a bounded

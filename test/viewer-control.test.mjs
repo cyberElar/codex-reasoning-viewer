@@ -101,7 +101,7 @@ test('invalid configure patches are rejected before local state is read', async 
     { mode: 'raw', unexpected: true },
     { mode: 'RAW' },
     { follow: 'false' },
-    { height: 63 },
+    { height: 17 },
     { height: 1601 },
     { indicatorColor: 'red' },
     { indicatorColor: 'AUTO' },

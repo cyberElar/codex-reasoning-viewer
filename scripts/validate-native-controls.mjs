@@ -589,6 +589,23 @@ try {
     'getComputedStyle(window.__codexReasoningViewer.getElement().querySelector(\'[data-reasoning-viewer-part="dot"]\')).backgroundColor',
   );
   assert.equal(changedColor, 'rgb(0, 170, 119)');
+  await run('window.__codexReasoningViewer.configure({height:18,collapsed:true})');
+  await settle();
+  const compactCollapsed = await snapshot();
+  assert.equal(compactCollapsed.status.resize.compact, false);
+  assert.equal(compactCollapsed.status.collapsed, true);
+  assert.equal(
+    await run(
+      'window.__codexReasoningViewer.getElement().querySelector(\'[data-reasoning-viewer-part="title"]\').getClientRects().length>0',
+    ),
+    true,
+  );
+  await run('window.__codexReasoningViewer.configure({collapsed:false})');
+  await settle();
+  const compactExpanded = await snapshot();
+  assert.equal(compactExpanded.status.resize.compact, true);
+  assert.equal(compactExpanded.status.collapsed, false);
+  assert.equal(compactExpanded.text, 'INITIAL_SUMMARY');
   await run(
     "window.__codexReasoningViewer.configure({mode:'auto',follow:true,collapsed:false,height:null,indicatorColor:'auto'});window.__codexReasoningViewer.setEnabled(false)",
   );

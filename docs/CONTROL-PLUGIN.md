@@ -86,6 +86,9 @@ server does not stop the independent native helper.
 
 The toolbar contains only an indicator, `Thinking` / `Done`, and `‹ n/m turns ›`.
 The indicator and label follow the current turn even when you browse history.
+At the smallest dragged height, the panel becomes a single line with the
+indicator beside the reasoning text. Status text and history controls return
+when you expand it; history and the selected turn remain intact.
 Settings are managed by MCP, not by controls in that toolbar.
 
 | Field            | Values                                                         | Default |
@@ -93,7 +96,7 @@ Settings are managed by MCP, not by controls in that toolbar.
 | `mode`           | `auto`, `summary`, `raw`                                       | `auto`  |
 | `follow`         | Boolean; default scrolling preference                          | `true`  |
 | `collapsed`      | Boolean; keep the header and hide the text body                | `false` |
-| `height`         | Integer from 64 to 1600 pixels, or `null` for automatic sizing | `null`  |
+| `height`         | Integer from 18 to 1600 pixels, or `null` for automatic sizing | `null`  |
 | `indicatorColor` | `auto` or a 3/4/6/8-digit hex color                            | `auto`  |
 
 For example:
@@ -112,13 +115,18 @@ applies them to attached windows. If the desktop is closed, the settings are sti
 saved and will be applied when the helper attaches. `viewer_settings` reads them
 without needing a running desktop.
 
+Height measures the reasoning body. A body height of 28 pixels fits one text line
+under the header. Values from 18 through 27 pixels snap to an 18-pixel body in the
+single-line layout. Scrolling and live text following remain active. The saved
+mouse-resize preference still uses the existing localStorage key.
+
 With `indicatorColor: "auto"`, the dot references Codex's native accent variable;
 theme changes take effect immediately. A hex color overrides it. No color is
 hard-coded for the automatic case.
 
 Preferences are stored in ignored `.local/control-plugin/settings.json`.
 Manual scrolling can pause the current text without changing the configured
-follow preference. Dragging the grip keeps its existing local height preference.
+follow preference. Dragging the top edge keeps its existing local height preference.
 An explicit `{"height": null}` resets that height; an unspecified startup height
 preserves a previous mouse resize.
 

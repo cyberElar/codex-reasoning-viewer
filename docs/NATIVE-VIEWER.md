@@ -44,8 +44,12 @@ hook. See [the control plugin guide](CONTROL-PLUGIN.md).
 - Multiple reasoning items within a turn are joined in order.
 - Turn navigation retains your selected historical turn while new text arrives.
 - Following scrolls to the end; scrolling up pauses it.
-- Drag the top grip to resize. Double-click resets it; arrow keys work when the
-  grip is focused.
+- Drag the top edge down to one header line and one reasoning line. Drag further
+  to show just the indicator beside one reasoning line, with status text and
+  history controls hidden. Dragging up restores them without changing history
+  selection or discarding text.
+- The resize edge is invisible and reserves no separate row. Double-click resets
+  height; arrow keys work when the edge is focused.
 - Hide removes the entire panel from the DOM, with no button or placeholder.
   The helper and history stay active. `/cot on` reopens it.
 - `/cot`, `/cot on`, and `/cot off` perform the same local visibility controls.

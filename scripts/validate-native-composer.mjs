@@ -96,7 +96,7 @@ try {
       await new Promise((resolve) => setTimeout(resolve, 50));
       const pending = await run(`(()=>{
         const panel=window.__codexReasoningViewer.status(),resize=panel.resize;
-        const size=panel.visible&&resize?.preferredHeightPx!==null&&resize?.preferredHeightPx!==undefined
+        const size=panel.visible&&!panel.collapsed&&resize?.preferredHeightPx!==null&&resize?.preferredHeightPx!==undefined
           &&resize.heightPx!==Math.max(resize.minimumPx,Math.min(resize.maximumPx,Math.round(resize.preferredHeightPx)));
         return{refresh:window.__codexReasoningNativeAdapter.status().refreshPending,render:panel.renderPending,size};
       })()`);
@@ -214,8 +214,22 @@ try {
   assert.equal(pinned.panel.turnId, 'turn-first');
   assert.equal(pinned.text, combinedRaw.text);
   assertStatus(pinned, true);
+  await run('window.__codexReasoningViewer.configure({height:18})');
+  await pause();
+  const compactHistory = await snapshot();
+  assert.equal(compactHistory.panel.resize.compact, true);
+  assert.equal(compactHistory.panel.turnId, 'turn-first');
+  assert.equal(compactHistory.panel.followingLatestTurn, false);
+  assert.equal(compactHistory.text, combinedRaw.text);
+  assertStatus(compactHistory, true);
+  await run('window.__codexReasoningViewer.configure({height:null})');
+  await pause();
+  const expandedHistory = await snapshot();
+  assert.equal(expandedHistory.panel.resize.compact, false);
+  assert.equal(expandedHistory.panel.turnId, 'turn-first');
+  assert.equal(expandedHistory.text, combinedRaw.text);
   historyCases.push({
-    step: 'new-turn-and-new-deltas-do-not-replace-selected-history',
+    step: 'new-turns-deltas-and-compact-layout-do-not-replace-selected-history',
     turnCount: pinned.panel.turnCount,
     selectedTurn: pinned.panel.turnId,
   });
@@ -284,6 +298,26 @@ try {
 
   const resizeSamples = [];
   const resizeStatus = () => run('window.__codexReasoningViewer.status()');
+  const layout = () =>
+    run(`(()=>{
+      const panel=window.__codexReasoningViewer.getElement(),body=panel.querySelector('pre'),
+        dot=panel.querySelector('[data-reasoning-viewer-part="dot"]'),
+        visible=selector=>panel.querySelector(selector).getClientRects().length>0,
+        bodyStyle=getComputedStyle(body),bodyRect=body.getBoundingClientRect(),dotRect=dot.getBoundingClientRect();
+      return{
+        titleVisible:visible('[data-reasoning-viewer-part="title"]'),
+        turnsVisible:visible('[data-reasoning-viewer-part="turns"]'),
+        dotVisible:dotRect.width>0&&dotRect.height>0,
+        bodyHeight:bodyRect.height,panelHeight:panel.getBoundingClientRect().height,
+        headerHeight:panel.querySelector('[data-reasoning-viewer-part="header"]').getBoundingClientRect().height,
+        resizePosition:getComputedStyle(panel.querySelector('[data-reasoning-viewer-resize]')).position,
+        resizeChildren:panel.querySelector('[data-reasoning-viewer-resize]').childElementCount,
+        lineHeight:parseFloat(bodyStyle.lineHeight),
+        contentHeight:body.clientHeight-parseFloat(bodyStyle.paddingTop)-parseFloat(bodyStyle.paddingBottom),
+        centersApart:Math.abs(bodyRect.y+bodyRect.height/2-dotRect.y-dotRect.height/2),
+        atBottom:Math.abs(body.scrollHeight-body.clientHeight-body.scrollTop)<=1,
+      };
+    })()`);
   const drag = async (start, end, finish = 'pointerup') => {
     await run(`(()=>{
       const handle=document.querySelector('[data-reasoning-viewer-resize]');
@@ -310,19 +344,186 @@ try {
   const maxed = await drag(400, -4000);
   resizeSamples.push({ step: 'viewport-limit', ...maxed.resize });
   assert.equal(maxed.resize.heightPx, maxed.resize.maximumPx);
+  const twoLine = await drag(400, 400 + maxed.resize.heightPx - 28);
+  const twoLineLayout = await layout();
+  resizeSamples.push({ step: 'one-header-and-one-reasoning-line', ...twoLine.resize });
+  assert.equal(twoLine.resize.heightPx, 28);
+  assert.equal(twoLine.resize.compact, false);
+  assert.equal(twoLineLayout.titleVisible, true);
+  assert.equal(twoLineLayout.turnsVisible, true);
+  assert.equal(twoLineLayout.contentHeight, twoLineLayout.lineHeight);
+  assert.equal(twoLineLayout.resizePosition, 'absolute');
+  assert.equal(twoLineLayout.resizeChildren, 0);
+  assert.equal(
+    twoLineLayout.panelHeight,
+    twoLineLayout.headerHeight + twoLineLayout.bodyHeight + 2,
+  );
+  if (isolatedBrowser) {
+    try {
+      await connection.evaluate(`(()=>{
+        const frame=window.${fixtureKey};
+        frame.style.left='0px';frame.style.pointerEvents='auto';
+      })()`);
+      const point = await run(`(()=>{
+        const rect=document.querySelector('[data-reasoning-viewer-resize]').getBoundingClientRect();
+        return{x:rect.x+rect.width/2,y:rect.y+rect.height/2};
+      })()`);
+      await connection.send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...point });
+      await connection.send('Input.dispatchMouseEvent', {
+        type: 'mousePressed',
+        ...point,
+        button: 'left',
+        buttons: 1,
+        clickCount: 1,
+      });
+      const end = { x: point.x, y: point.y + 12 };
+      await connection.send('Input.dispatchMouseEvent', {
+        type: 'mouseMoved',
+        ...end,
+        button: 'left',
+        buttons: 1,
+      });
+      await connection.send('Input.dispatchMouseEvent', {
+        type: 'mouseReleased',
+        ...end,
+        button: 'left',
+        buttons: 0,
+        clickCount: 1,
+      });
+      await pause();
+      const mouseCompact = await resizeStatus();
+      assert.equal(mouseCompact.resize.compact, true);
+      assert.equal(mouseCompact.resize.dragging, false);
+      assert.equal(
+        await run(
+          "getComputedStyle(document.querySelector('[data-reasoning-viewer-resize]')).boxShadow",
+        ),
+        'none',
+      );
+      resizeSamples.push({ step: 'native-mouse-top-edge-enters-compact', ...mouseCompact.resize });
+      for (const type of ['keyDown', 'keyUp'])
+        await connection.send('Input.dispatchKeyEvent', {
+          type,
+          key: 'ArrowUp',
+          code: 'ArrowUp',
+          windowsVirtualKeyCode: 38,
+          nativeVirtualKeyCode: 38,
+        });
+      await pause();
+      const keyboardEdge = await resizeStatus();
+      assert.equal(keyboardEdge.resize.heightPx, 34);
+      assert.equal(keyboardEdge.resize.compact, false);
+      assert.notEqual(
+        await run(
+          "getComputedStyle(document.querySelector('[data-reasoning-viewer-resize]')).boxShadow",
+        ),
+        'none',
+      );
+    } finally {
+      await connection.evaluate(`(()=>{
+        const frame=window.${fixtureKey};
+        frame.style.left='-10000px';frame.style.pointerEvents='none';
+      })()`);
+      await run('window.__codexReasoningViewer.resize.setHeight(28)');
+      await pause();
+    }
+  }
+  const canceledCompact = await drag(400, 410, 'pointercancel');
+  assert.equal(canceledCompact.resize.heightPx, 28);
+  assert.equal(canceledCompact.resize.compact, false);
   const minned = await drag(400, 4000);
+  const compactLayout = await layout();
   resizeSamples.push({ step: 'minimum-limit', ...minned.resize });
   assert.equal(minned.resize.heightPx, minned.resize.minimumPx);
+  assert.equal(minned.resize.compact, true);
+  assert.equal(compactLayout.titleVisible, false);
+  assert.equal(compactLayout.turnsVisible, false);
+  assert.equal(compactLayout.dotVisible, true);
+  assert.equal(compactLayout.bodyHeight, compactLayout.lineHeight);
+  assert.equal(compactLayout.panelHeight, 28);
+  assert.ok(compactLayout.centersApart <= 1);
+  for (const height of [19, 24, 27]) {
+    await run(`window.__codexReasoningViewer.configure({height:${height}})`);
+    await pause();
+    const snapped = await resizeStatus();
+    assert.equal(snapped.resize.preferredHeightPx, 18);
+    assert.equal(snapped.resize.heightPx, 18);
+    assert.equal(snapped.resize.compact, true);
+  }
+  await run(
+    `window.__composerFixtureManager.onNotification('item/reasoning/textDelta',{threadId:'fixture-second',turnId:'turn-second',itemId:'item-compact',contentIndex:0,delta:${JSON.stringify(Array.from({ length: 12 }, (_, index) => 'COMPACT_LINE_' + index).join('\n'))}})`,
+  );
+  await pause();
+  const compactStream = await snapshot();
+  assert.equal(compactStream.panel.resize.compact, true);
+  assert.equal(
+    compactStream.text,
+    'FULL_SUMMARY\n\n' +
+      Array.from({ length: 12 }, (_, index) => 'COMPACT_LINE_' + index).join('\n'),
+  );
+  assertStatus(compactStream, true);
+  assert.equal((await layout()).atBottom, true);
+  const compactMetadata = await run('window.__codexReasoningViewer.historyMetadata()');
+  await run('window.__codexReasoningViewer.resize.dispose()');
+  await run(resizeSource);
+  await pause();
+  const restoredCompact = await snapshot();
+  resizeSamples.push({ step: 'compact-preference-restored', ...restoredCompact.panel.resize });
+  assert.equal(restoredCompact.panel.resize.compact, true);
+  assert.equal(restoredCompact.text, compactStream.text);
+  assert.deepEqual(await run('window.__codexReasoningViewer.historyMetadata()'), compactMetadata);
+  await run(
+    `window.__composerFixtureManager.onNotification('turn/completed',{threadId:'fixture-second',turn:{id:'turn-second'}})`,
+  );
+  await pause();
+  assertStatus(await snapshot(), false);
   await run(
     `document.querySelector('[data-reasoning-viewer-resize]').dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowUp',bubbles:true,cancelable:true}))`,
   );
-  assert.equal((await resizeStatus()).resize.heightPx, minned.resize.minimumPx + 16);
+  const keyboardExpanded = await snapshot();
+  assert.equal(keyboardExpanded.panel.resize.heightPx, minned.resize.minimumPx + 16);
+  assert.equal(keyboardExpanded.panel.resize.compact, false);
+  assert.equal(keyboardExpanded.text, compactStream.text);
+  assert.equal((await layout()).titleVisible, true);
+  assert.equal((await layout()).turnsVisible, true);
+  assert.deepEqual(
+    await run('window.__codexReasoningViewer.historyMetadata()'),
+    compactMetadata.map((turn) => ({ ...turn, isRunning: false })),
+  );
   await run(
     `document.querySelector('[data-reasoning-viewer-resize]').dispatchEvent(new MouseEvent('dblclick',{bubbles:true,cancelable:true}))`,
   );
   const reset = await resizeStatus();
   resizeSamples.push({ step: 'double-click-reset', ...reset.resize });
   assert.equal(reset.resize.preferredHeightPx, null);
+  await run('window.__codexReasoningViewer.configure({height:18,collapsed:true})');
+  const canceledCollapsed = await drag(400, 200, 'pointercancel');
+  assert.equal(canceledCollapsed.collapsed, true);
+  assert.equal(canceledCollapsed.resize.preferredHeightPx, 18);
+  assert.equal(canceledCollapsed.resize.compact, false);
+  resizeSamples.push({ step: 'cancel-restores-collapsed-layout', ...canceledCollapsed.resize });
+  await run('window.__codexReasoningViewer.configure({height:null,collapsed:false})');
+  await connection.evaluate(`window.${fixtureKey}.style.height='203px'`);
+  await pause();
+  const automaticCompact = await resizeStatus();
+  assert.equal(automaticCompact.resize.preferredHeightPx, null);
+  assert.equal(automaticCompact.resize.heightPx, 18);
+  assert.equal(automaticCompact.resize.compact, true);
+  resizeSamples.push({
+    step: 'automatic-height-snaps-in-small-viewport',
+    ...automaticCompact.resize,
+  });
+  await connection.evaluate(`window.${fixtureKey}.style.height='600px'`);
+  await pause();
+  await run(
+    "localStorage.setItem('codex-reasoning-viewer:body-height:v1','64');window.__codexReasoningViewer.resize.dispose()",
+  );
+  await run(resizeSource);
+  const legacyHeight = await resizeStatus();
+  assert.equal(legacyHeight.resize.preferredHeightPx, 64);
+  assert.equal(legacyHeight.resize.heightPx, 64);
+  assert.equal(legacyHeight.resize.compact, false);
+  resizeSamples.push({ step: 'legacy-height-key-preserved', ...legacyHeight.resize });
 
   await run(
     'window.__codexReasoningViewer.resize.setHeight(240);window.__codexReasoningViewer.resize.dispose()',

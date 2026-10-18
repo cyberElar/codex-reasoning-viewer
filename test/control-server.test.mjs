@@ -173,7 +173,7 @@ test('SDK handshake exposes the visibility and settings tools', async () => {
     assert.deepEqual(configure.inputSchema.properties.mode.enum, ['auto', 'summary', 'raw']);
     assert.equal(configure.inputSchema.properties.follow.type, 'boolean');
     assert.equal(configure.inputSchema.properties.collapsed.type, 'boolean');
-    assert.equal(configure.inputSchema.properties.height.anyOf[0].minimum, 64);
+    assert.equal(configure.inputSchema.properties.height.anyOf[0].minimum, 18);
     assert.equal(configure.inputSchema.properties.height.anyOf[0].maximum, 1600);
     assert.equal(configure.inputSchema.properties.height.anyOf[1].type, 'null');
     assert.match(configure.inputSchema.properties.indicatorColor.pattern, /auto/);
@@ -397,9 +397,9 @@ test('invalid configure patches are rejected before the store or viewer runs', a
       { mode: 'RAW' },
       { follow: 'false' },
       { collapsed: 1 },
-      { height: 63 },
+      { height: 17 },
       { height: 1601 },
-      { height: 64.5 },
+      { height: 18.5 },
       { height: '800' },
       { indicatorColor: 'red' },
       { indicatorColor: 'AUTO' },

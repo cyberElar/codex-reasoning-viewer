@@ -22,6 +22,7 @@
   panel.setAttribute('aria-label', 'Reasoning');
   // A constructed sheet gives hover/focus states without an inline <style>, which CSP may block.
   const scope = '[data-reasoning-viewer="codex-reasoning-viewer-v1"]',
+    compactScope = scope + '[data-reasoning-viewer-compact]',
     part = (name) => scope + ' [data-reasoning-viewer-part="' + name + '"]';
   let sheet = null;
   try {
@@ -30,12 +31,15 @@
       [
         scope +
           // The native accent stays a live reference, so theme changes apply without polling.
-          '{--rv-indicator-color:var(--codex-base-accent,var(--color-ring-primary,currentColor));--rv-line:color-mix(in srgb,currentColor 11%,transparent);--rv-fill:color-mix(in srgb,currentColor 7%,transparent);--rv-muted:color-mix(in srgb,currentColor 58%,transparent);box-sizing:border-box;margin:0 0 6px;min-width:0;border:1px solid var(--rv-line);border-radius:12px;background-color:var(--color-background-primary,transparent);background-image:linear-gradient(color-mix(in srgb,currentColor 2.5%,transparent),color-mix(in srgb,currentColor 2.5%,transparent));font-size:12px;line-height:1.5;overflow:hidden}',
+          // Positioning anchors the resize edge; isolation keeps its z-index inside the panel.
+          '{--rv-indicator-color:var(--codex-base-accent,var(--color-ring-primary,currentColor));--rv-line:color-mix(in srgb,currentColor 11%,transparent);--rv-fill:color-mix(in srgb,currentColor 7%,transparent);--rv-muted:color-mix(in srgb,currentColor 58%,transparent);position:relative;isolation:isolate;box-sizing:border-box;margin:0 0 6px;min-width:0;border:1px solid var(--rv-line);border-radius:12px;background-color:var(--color-background-primary,transparent);background-image:linear-gradient(color-mix(in srgb,currentColor 2.5%,transparent),color-mix(in srgb,currentColor 2.5%,transparent));font-size:12px;line-height:1.5;overflow:hidden}',
         scope + '[hidden],' + scope + ' [hidden]{display:none!important}',
+        // The 22px turn controls keep an even 4px inset from the top, right and bottom edges;
+        // the indicator lines up with the reasoning text below it.
         part('header') +
-          '{display:flex;align-items:center;min-height:28px;padding:1px 4px 1px 10px}',
+          '{box-sizing:border-box;display:flex;align-items:center;column-gap:7px;min-height:30px;padding:0 4px 0 12px}',
         part('dot') +
-          '{flex:none;width:6px;height:6px;margin-right:7px;border-radius:50%;background:var(--rv-indicator-color);opacity:.45}',
+          '{flex:none;width:6px;height:6px;border-radius:50%;background:var(--rv-indicator-color);opacity:.45}',
         part('dot') +
           '[data-running]{opacity:1;animation:codex-reasoning-viewer-pulse 1.4s ease-in-out infinite}',
         '@keyframes codex-reasoning-viewer-pulse{50%{opacity:.35}}',
@@ -65,13 +69,29 @@
           ' pre:focus-visible{opacity:1;outline:2px solid color-mix(in srgb,currentColor 28%,transparent);outline-offset:-2px}',
         scope +
           ' pre{box-sizing:border-box;margin:0;padding:8px 12px 10px;border-top:1px solid var(--rv-line);max-height:200px;overflow:auto;overscroll-behavior:contain;font:inherit;color:color-mix(in srgb,currentColor 82%,transparent);white-space:pre-wrap;overflow-wrap:anywhere;user-select:text;scrollbar-width:thin;scrollbar-color:color-mix(in srgb,currentColor 22%,transparent) transparent}',
-        // resize.js styles its grip inline; keep it quiet until the handle is used.
+        // Dense heights inset the text with borders, which unlike padding never scroll, so one
+        // line shows without a clipped neighbour. The separator is drawn into the top border,
+        // and the scrollbar is hidden as in compact mode since its arrows would fill the track.
         scope +
-          ' [data-reasoning-viewer-resize]>span{opacity:.15!important;transition:opacity .12s}',
+          '[data-reasoning-viewer-dense] pre{padding:0 12px;border:solid transparent;border-width:5px 0;background:linear-gradient(var(--rv-line),var(--rv-line)) border-box 0 0/100% 1px no-repeat;scrollbar-width:none}',
+        // Compact mode keeps the indicator where the header shows it, beside one reasoning line.
+        compactScope +
+          '{display:grid;grid-template-columns:auto minmax(0,1fr);column-gap:7px;align-items:center;padding:4px 12px}',
+        compactScope + ' [data-reasoning-viewer-part="header"]{display:contents}',
+        compactScope + ' [data-reasoning-viewer-part="dot"]{grid-column:1;grid-row:1}',
+        compactScope +
+          ' [data-reasoning-viewer-part="title"],' +
+          compactScope +
+          ' [data-reasoning-viewer-part="turns"]{display:none}',
+        compactScope + ' pre{grid-column:2;grid-row:1;border:0;padding:0;scrollbar-width:none}',
+        // The unpadded single line takes its focus ring just outside the text.
+        compactScope + ' pre:focus-visible{outline-offset:1px}',
+        // resize.js adds an invisible top edge; it overlays the panel without reserving a row.
+        // Its accent line marks keyboard focus, not the focus a pointer press gives it.
         scope +
-          ' [data-reasoning-viewer-resize]:hover>span,' +
-          scope +
-          ' [data-reasoning-viewer-resize]:focus-visible>span{opacity:.45!important}',
+          ' [data-reasoning-viewer-resize]{position:absolute;inset:0 0 auto;z-index:1;outline:none;transition:box-shadow .12s}',
+        scope +
+          ' [data-reasoning-viewer-resize]:focus-visible:not([data-reasoning-viewer-pointer]){box-shadow:inset 0 2px var(--rv-indicator-color)}',
         '@media (prefers-reduced-motion:reduce){' +
           scope +
           ' *{transition:none!important;animation:none!important}}',
@@ -124,7 +144,7 @@
     mode: (value) => modes.includes(value),
     follow: (value) => typeof value === 'boolean',
     collapsed: (value) => typeof value === 'boolean',
-    height: (value) => value === null || (Number.isInteger(value) && value >= 64 && value <= 1600),
+    height: (value) => value === null || (Number.isInteger(value) && value >= 18 && value <= 1600),
     indicatorColor: (value) =>
       value === 'auto' || (typeof value === 'string' && hexColor.test(value)),
   };
@@ -327,6 +347,7 @@
     }
     // setHeight expands the body; an omitted collapsed setting keeps its previous value.
     body.hidden = collapsed;
+    api.resize?.refresh();
     schedule();
     return settings();
   }

@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.4.0 - 2026-10-18
+
+- Shrink the panel to one header line and one reasoning line, then further to a
+  single line with the indicator beside the reasoning text.
+- Hide status text and history controls in the compact layout and restore them
+  when expanding, without replacing the selected turn or its reasoning.
+- Keep streaming, scroll following, height persistence, and drag cancellation
+  working across layout changes.
+- Accept body heights from 18 pixels through mouse resizing and MCP settings.
+- Remove the visible resize grip and its reserved row; polish the normal header
+  spacing while keeping the top edge draggable.
+- Keep the minimum normal body to one clean text line and show the resize focus
+  indicator only for keyboard input.
+- Restore the previous collapsed state when canceling a drag.
+
 ## 0.3.1 - 2026-10-18
 
 - Show Thinking while the current turn runs and Done when it finishes.

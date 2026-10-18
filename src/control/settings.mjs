@@ -23,7 +23,7 @@ export const SETTINGS_SCHEMA = {
     mode: { type: 'string', enum: ['auto', 'summary', 'raw'] },
     follow: { type: 'boolean' },
     collapsed: { type: 'boolean' },
-    height: { anyOf: [{ type: 'integer', minimum: 64, maximum: 1600 }, { type: 'null' }] },
+    height: { anyOf: [{ type: 'integer', minimum: 18, maximum: 1600 }, { type: 'null' }] },
     indicatorColor: {
       type: 'string',
       pattern: '^(auto|#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8}))$',
@@ -52,7 +52,7 @@ export function validateSettingsPatch(value, { allowEmpty = false } = {}) {
       (['follow', 'collapsed'].includes(key) && typeof item !== 'boolean') ||
       (key === 'height' &&
         item !== null &&
-        (!Number.isInteger(item) || item < 64 || item > 1600)) ||
+        (!Number.isInteger(item) || item < 18 || item > 1600)) ||
       (key === 'indicatorColor' &&
         (typeof item !== 'string' ||
           (item !== 'auto' && !/^#(?:[\da-f]{3}|[\da-f]{4}|[\da-f]{6}|[\da-f]{8})$/i.test(item))))

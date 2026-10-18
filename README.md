@@ -19,7 +19,9 @@ It does not modify the ASAR, replace the application directory, or alter model s
   and pause following when you scroll up.
 - **Turn history:** keep multiple reasoning items together within a turn, browse
   earlier turns, and return to the latest without losing already observed items.
-- **Resizable panel:** drag the top grip; double-click to reset its height.
+- **Resizable panel:** drag the top edge down to one header line plus one reasoning line,
+  then further to a single line with the indicator beside the reasoning text.
+  Drag up to restore the header and history controls; double-click to reset.
 - **Minimal English header:** an accent-colored indicator, `Thinking` / `Done`,
   and `‹ n/m turns ›` navigation. Status follows the current turn even while you
   browse history. The indicator follows the Codex accent by default.
@@ -102,7 +104,7 @@ composer; the companion follows the active visible conversation.
 | `‹ n/m turns ›`                   | Browse turns with arrows or the turn selector    |
 | Last turn in the selector         | Return to the latest turn                        |
 | `viewer_configure` MCP tool       | Change source, following, collapse, height/color |
-| Drag top grip / double-click grip | Resize / reset the panel                         |
+| Drag top edge / double-click edge | Resize / reset the panel                         |
 
 Enter a local command alone on one line, with the caret at its end, then press
 Tab or Enter. The local handler applies it immediately and clears the command,

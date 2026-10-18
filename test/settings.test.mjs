@@ -45,6 +45,8 @@ test('validated patches accept every documented value', () => {
     { follow: false },
     { collapsed: true },
     { height: null },
+    { height: 18 },
+    { height: 28 },
     { height: 64 },
     { height: 1600 },
     { indicatorColor: 'auto' },
@@ -83,7 +85,7 @@ test('patches require at least one own property and reject unknown keys', () => 
 });
 
 test('height and indicator color boundaries are enforced', () => {
-  for (const height of [63, 1601, 64.5, -64, NaN, Infinity, '64']) {
+  for (const height of [17, 1601, 18.5, -18, NaN, Infinity, '18']) {
     assert.throws(() => validateSettingsPatch({ height }), /Invalid viewer setting: height/);
   }
   for (const indicatorColor of [
@@ -148,7 +150,7 @@ test('invalid environment settings are rejected rather than ignored', () => {
     { CODEX_REASONING_MODE: 'verbose' },
     { CODEX_REASONING_FOLLOW: 'yes' },
     { CODEX_REASONING_COLLAPSED: '1' },
-    { CODEX_REASONING_HEIGHT: '63' },
+    { CODEX_REASONING_HEIGHT: '17' },
     { CODEX_REASONING_HEIGHT: '1601' },
     { CODEX_REASONING_HEIGHT: '1.5' },
     { CODEX_REASONING_HEIGHT: '' },
@@ -167,6 +169,7 @@ test('startup settings omit a null height so a dragged height is preserved', () 
     indicatorColor: 'auto',
   });
   assert.deepEqual(startupSettings({ height: null }), {});
+  assert.deepEqual(startupSettings({ height: 18 }), { height: 18 });
   assert.deepEqual(startupSettings({ height: 64 }), { height: 64 });
   assert.throws(() => startupSettings({}), /Unknown or empty viewer settings/);
 });
