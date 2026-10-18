@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.2 - 2026-10-18
+
+- Keep waiting when Windows reports that the temporary loopback debug listener
+  has not appeared yet, instead of disabling the viewer immediately.
+- Continue to propagate permission and other listener-query errors.
+- Add a real Windows regression for a port without a listener.
+
 ## 0.4.1 - 2026-10-18
 
 - Select a free loopback port in the helper and pass its explicit nonzero number

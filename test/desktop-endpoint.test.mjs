@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:net';
+import { allocateDebugPort } from '../src/native/debug-port.mjs';
 import { waitForDesktopEndpoint } from '../src/native/desktop-endpoint.mjs';
 
 const PID = 4242;
@@ -308,4 +309,9 @@ test('Windows listener discovery verifies an owned live loopback socket', async 
       server.close((error) => (error ? reject(error) : resolve()));
     });
   }
+});
+
+test('Windows listener discovery returns false when the port has no listener', async () => {
+  const port = await allocateDebugPort();
+  assert.equal(await waitForDesktopEndpoint(process.pid, port, { timeoutMs: 500 }), false);
 });
